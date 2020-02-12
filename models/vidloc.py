@@ -70,15 +70,15 @@ class VidLoc(nn.Module):
     self.wpqr_h = Variable(None)
     self.wpqr_c = Variable(None)
 
-  def forward(self, x, cuda=False, async=True):
+  def forward(self, x, cuda=False, non_blocking=True):
     """
     :param x: B x G x C x H x W;
     :param cuda
-    :param async
+    :param non_blocking
     :return: poses B x G x 7
     """
     if cuda:
-      x = x.cuda(async=async)
+      x = x.cuda(non_blocking=non_blocking)
     s = x.size()
     x = x.view(-1, *s[2:])
     x = self.feature_extractor(x).squeeze()  # BG x d

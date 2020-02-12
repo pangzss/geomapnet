@@ -338,13 +338,13 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
 
   data_var = Variable(data, requires_grad=train)
   if cuda:
-    data_var = data_var.cuda(async=True)
+    data_var = data_var.cuda(non_blocking=True)
   with torch.set_grad_enabled(train):
     output = model(data_var)
 
   if criterion is not None:
     if cuda:
-      target = target.cuda(async=True)
+      target = target.cuda(non_blocking=True)
 
     target_var = Variable(target, requires_grad=False)
     with torch.set_grad_enabled(train):
@@ -405,11 +405,11 @@ def step_lstm(data, model, cuda, target=None, criterion=None, optim=None,
       if target is not None:
         tg = torch.index_select(tb, dim=1, index=Variable(g_idx).cuda())
       model.detach_hidden_states()
-      output = model(xg, cuda=cuda, async=True)
+      output = model(xg, cuda=cuda, non_blocking=True)
 
       if criterion is not None:
         if cuda:
-          tg = tg.cuda(async=True)
+          tg = tg.cuda(non_blocking=True)
         tg_var = Variable(tg, volatile=(not train), requires_grad=False)
         loss = criterion(output, tg_var)
         loss_accum += loss.data[0]

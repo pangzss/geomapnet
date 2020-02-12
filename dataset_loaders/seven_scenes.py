@@ -10,6 +10,7 @@ import os
 import os.path as osp
 import numpy as np
 from torch.utils import data
+#from .utils import load_image
 from .utils import load_image
 import sys
 import pickle

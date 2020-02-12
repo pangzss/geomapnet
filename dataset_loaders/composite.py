@@ -63,7 +63,9 @@ class MF(data.Dataset):
     else:
       skips = self.skip * np.ones(self.steps-1)
     offsets = np.insert(skips, 0, 0).cumsum()
-    offsets -= offsets[len(offsets) / 2]
+    
+    offsets -= offsets[int(len(offsets) / 2)]
+    
     if self.no_duplicates:
       offsets += self.steps/2 * self.skip
     offsets = offsets.astype(np.int)
