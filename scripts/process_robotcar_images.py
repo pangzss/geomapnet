@@ -9,7 +9,7 @@ folder.
 The RobotCar dataset must use the SDK image loader function for this script to
 work!
 """
-import set_paths
+from . import set_paths
 from dataset_loaders.robotcar import RobotCar
 import argparse
 import os.path as osp
@@ -26,9 +26,9 @@ parser.add_argument('--n_cores', type=int, default=4)
 parser.add_argument('--val', action='store_true')
 args = parser.parse_args()
 if args.val:
-  print 'processing VAL data using {:d} cores'.format(args.n_cores)
+  print('processing VAL data using {:d} cores'.format(args.n_cores))
 else:
-  print 'processing TRAIN data using {:d} cores'.format(args.n_cores)
+  print('processing TRAIN data using {:d} cores'.format(args.n_cores))
 
 # create data loader
 batch_size = args.n_cores
@@ -67,7 +67,7 @@ for batch_idx, (imgs, _) in enumerate(loader):
     try:
       im.save(im_filename)
     except IOError:
-      print 'IOError while saving {:s}'.format(im_filename)
+      print('IOError while saving {:s}'.format(im_filename))
 
   if batch_idx % 50 == 0:
-    print 'Processed {:d} / {:d}'.format(batch_idx*batch_size, len(dset))
+    print('Processed {:d} / {:d}'.format(batch_idx*batch_size, len(dset)))

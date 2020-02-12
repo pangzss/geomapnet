@@ -10,7 +10,7 @@ from robotcar_sdk.interpolate_poses import interpolate_vo_poses,\
   interpolate_ins_poses
 from robotcar_sdk.camera_model import CameraModel
 from robotcar_sdk.image import load_image
-import utils
+from . import utils
 from functools import partial
 from common.pose_utils import process_poses
 import pickle
@@ -88,7 +88,7 @@ class RobotCar(data.Dataset):
 
     # read / save pose normalization information
     poses = np.empty((0, 12))
-    for p in ps.values():
+    for p in list(ps.values()):
       poses = np.vstack((poses, p))
     pose_stats_filename = osp.join(data_dir, 'pose_stats.txt')
     if train and not real:
@@ -105,7 +105,7 @@ class RobotCar(data.Dataset):
                           align_R=vo_stats[seq]['R'], align_t=vo_stats[seq]['t'],
                           align_s=vo_stats[seq]['s'])
       self.poses = np.vstack((self.poses, pss))
-    self.gt_idx = np.asarray(range(len(self.poses)))
+    self.gt_idx = np.asarray(list(range(len(self.poses))))
 
     # camera model and image loader
     camera_model = CameraModel(osp.join('..', 'data', 'robotcar_camera_models'),
@@ -155,7 +155,7 @@ def main():
 
   data_path = osp.join('..', 'data', 'deepslam_data', 'RobotCar')
   dset = RobotCar(scene, data_path, train=True, real=True, transform=transform)
-  print 'Loaded RobotCar scene {:s}, length = {:d}'.format(scene, len(dset))
+  print('Loaded RobotCar scene {:s}, length = {:d}'.format(scene, len(dset)))
 
   # plot the poses
   plt.figure()
@@ -168,7 +168,7 @@ def main():
   batch_count = 0
   N = 2
   for batch in data_loader:
-    print 'Minibatch {:d}'.format(batch_count)
+    print('Minibatch {:d}'.format(batch_count))
     show_batch(make_grid(batch[0], nrow=5, padding=25, normalize=True))
 
     batch_count += 1

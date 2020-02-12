@@ -3,7 +3,7 @@ Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
  
-import set_paths
+from . import set_paths
 from models.posenet import PoseNet
 from dataset_loaders.seven_scenes import SevenScenes
 from dataset_loaders.robotcar import RobotCar
@@ -55,9 +55,9 @@ if osp.isfile(weights_filename):
   loc_func = lambda storage, loc: storage
   checkpoint = torch.load(weights_filename, map_location=loc_func)
   load_state_dict(model, checkpoint['model_state_dict'])
-  print 'Loaded weights from {:s}'.format(weights_filename)
+  print('Loaded weights from {:s}'.format(weights_filename))
 else:
-  print 'Could not load weights from {:s}'.format(weights_filename)
+  print('Could not load weights from {:s}'.format(weights_filename))
   sys.exit(-1)
 
 data_dir = osp.join('..', 'data', args.dataset)
@@ -73,9 +73,9 @@ target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 # dataset
 train = not args.val
 if train:
-  print 'Visualizing TRAIN data'
+  print('Visualizing TRAIN data')
 else:
-  print 'Visualizing VAL data'
+  print('Visualizing VAL data')
 data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 kwargs = dict(scene=args.scene, data_path=data_dir, train=train,
   transform=data_transform, target_transform=target_transform, seed=seed)
@@ -106,8 +106,8 @@ out_filename = osp.join(args.output_dir, '{:s}_{:s}_attention_{:s}.avi'.
 img, _ = data_set[0]
 vwrite = cv2.VideoWriter(out_filename, fourcc=fourcc, fps=20.0,
                          frameSize=(img.size(2), img.size(1)))
-print 'Initialized VideoWriter to {:s} with frames size {:d} x {:d}'.\
-  format(out_filename, img.size(2), img.size(1))
+print('Initialized VideoWriter to {:s} with frames size {:d} x {:d}'.\
+  format(out_filename, img.size(2), img.size(1)))
 
 # inference
 cm_jet = plt.cm.get_cmap('jet')
@@ -145,7 +145,7 @@ for batch_idx, (data, target) in enumerate(loader):
   vwrite.write(img.astype(np.uint8))
 
   if batch_idx % 200 == 0:
-    print '{:d} / {:d}'.format(batch_idx, len(loader))
+    print('{:d} / {:d}'.format(batch_idx, len(loader)))
 
 vwrite.release()
-print '{:s} written'.format(out_filename)
+print('{:s} written'.format(out_filename))

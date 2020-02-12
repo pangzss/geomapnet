@@ -6,7 +6,7 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
 script to calculate pose translation stats (run first for every dataset)
 """
-import set_paths
+from . import set_paths
 from dataset_loaders.seven_scenes import SevenScenes
 from dataset_loaders.robotcar import RobotCar
 import argparse
@@ -32,4 +32,4 @@ elif args.dataset == 'RobotCar':
 else:
   raise NotImplementedError
 
-print 'Done'
+print('Done')
