@@ -8,10 +8,10 @@ dependencies:
 - ipython
 - numpy
 - pip
-- python=2.7
+- python=3.7
 - scikit-learn
 - scipy
-- pytorch=0.4.1
+- pytorch
 - torchvision
 - matplotlib
 - pip:
