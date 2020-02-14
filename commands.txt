@@ -1,7 +1,14 @@
+
+### mapnet chess 
 python eval.py --dataset 7Scenes --scene chess --model mapnet \
 --weights logs/7Scenes_chess_mapnet_mapnet_learn_beta_learn_gamma/epoch_250.pth.tar \
 --config_file configs/mapnet.ini --val
-
+### mapnet heads
 python eval.py --dataset 7Scenes --scene heads --model mapnet \
 --weights logs/7Scenes_heads_mapnet_mapnet_learn_beta_learn_gamma/epoch_250.pth.tar \
 --config_file configs/mapnet.ini --val
+
+### stylized mapnet chess 
+python eval.py --dataset 7Scenes --scene chess --model mapnet \
+--weights logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar \
+--config_file configs/style.ini --val

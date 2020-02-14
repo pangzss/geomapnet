@@ -68,6 +68,7 @@ class SevenScenes(data.Dataset):
         if real:
           pose_file = osp.join(data_dir, '{:s}_poses'.format(vo_lib),
                                'seq-{:02d}.txt'.format(seq))
+          
           pss = np.loadtxt(pose_file)
           frame_idx = pss[:, 0].astype(np.int)
           if vo_lib == 'libviso2':

@@ -29,8 +29,11 @@ import pickle
 # config
 parser = argparse.ArgumentParser(description='Evaluation script for PoseNet and'
                                              'MapNet variants')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar'),
+# modeified by pang 
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight',
+                                                'CambridgeLandmarks','stylized'),
                     help='Dataset')
+
 parser.add_argument('--scene', type=str, help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
