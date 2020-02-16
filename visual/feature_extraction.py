@@ -63,12 +63,12 @@ class conv_forward():
     
         self.store_maps_hook(layers)
 
-        _ = conv_model(img)
+        out = conv_model(img)
 
         #if deconv_model:
         #    deconv_model = Deconv_ResNet(identity_maps) 
         #    deconv_layers = deconv_model._modules
         #    print_shape_hook(deconv_layers)
         #    out_deconv = deconv_model(out)
-        return self.activations, self.identity_maps 
+        return out, self.activations, self.identity_maps 
 

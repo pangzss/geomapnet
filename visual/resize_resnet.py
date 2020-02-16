@@ -1,18 +1,19 @@
 import torch
 import torch.nn as nn
 
-def deconv3x3(in_planes,out_planes,stride=1, output_padding=0):
+def deconv3x3(in_planes,out_planes,stride=1):
     """ 3x3 deconvolution """
-    return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=3, stride=stride, 
-                            padding=1, output_padding=output_padding, bias=False)
-def conv1x1(in_planes, out_planes, stride=1):
-    """1x1 convoluton for later downsampling"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, 
-                                             bias=False)
+    resize_conv = nn.Sequential(
+         nn.Upsample(scale_factor = stride, mode='bilinear',align_corners=True),
+         nn.ReflectionPad2d(1),
+        nn.Conv2d(in_planes, out_planes,
+        kernel_size=3, stride=1, padding=0,bias=False)
+    )
+    return resize_conv
 
 class Block(nn.Module):
 
-    def __init__(self, in_planes, out_planes, identity, stride=1,output_padding=0):
+    def __init__(self, in_planes, out_planes, identity, stride=1):
         super(Block, self).__init__()
 
         self.identity = identity
@@ -22,7 +23,7 @@ class Block(nn.Module):
 
         self.relu2 = nn.ReLU(inplace=True)
         # may need to upsample
-        self.deconv2 = deconv3x3(in_planes,out_planes,stride = stride, output_padding = output_padding)
+        self.deconv2 = deconv3x3(in_planes,out_planes,stride = stride)
         self.bn2 = nn.BatchNorm2d(out_planes)
         # for downsampling the act map from the previous conv block (later deconv block)
         #self.downsample = downsample
@@ -41,9 +42,9 @@ class Block(nn.Module):
 
         return out
 
-class Deconv_ResNet(nn.Module):
+class Resize_ResNet(nn.Module):
     def __init__(self, identity_maps):
-        super(Deconv_ResNet, self).__init__()
+        super(Resize_ResNet, self).__init__()
         
         self.identity_maps = identity_maps
         block = Block
@@ -56,14 +57,18 @@ class Deconv_ResNet(nn.Module):
         self.layers = [self.layer1,self.layer2,self.layer3,self.layer4]
         self.unpool = nn.MaxUnpool2d(2,stride=2)
         self.relu = nn.ReLU(inplace=True)
-        self.conv_last = nn.ConvTranspose2d(64,3,kernel_size=7,stride=2,
-                                            padding=1, output_padding=1)
+        self.conv_last = nn.Sequential(
+                nn.Upsample(scale_factor = 2, mode='bilinear',align_corners=True),
+                nn.ReflectionPad2d(1),
+                nn.Conv2d(64, 3,
+                kernel_size=7, stride=1, padding=0,bias=False)
+        )
+       
         
         #self.conv2deconv_layer_indices = {1:4, 2:3, 3:2, 4,1}
         #self.
     def _make_layer(self, block, num_blocks, planes, out_planes, layer_idx, stride=1):
         downsample = None
-        output_padding = 0
 
         identity_layer = self.identity_maps['layer'+str(4-layer_idx+1)]
         #if layer_idx != 4:
@@ -87,7 +92,7 @@ class Deconv_ResNet(nn.Module):
         #layers.append(block(planes,planes,activ_blk_next,downsample=downsample))
         # the last needs upsampling (via stride)
 
-        layers.append(block(planes,out_planes,identity_layer['block0'],stride=stride,output_padding = output_padding))
+        layers.append(block(planes,out_planes,identity_layer['block0'],stride=stride))
   
         return nn.Sequential(*layers)
 

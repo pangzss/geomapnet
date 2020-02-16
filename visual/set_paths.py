@@ -6,6 +6,5 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 import sys
 import os.path as osp
 
-# insert at 1, 0 is the script path (or '' in REPL)
-sys.path.append('../')
+sys.path.append('../models')
 
