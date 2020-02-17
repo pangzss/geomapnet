@@ -48,6 +48,6 @@ def tn_deconv_img(deconv_output):
     img = img.astype(np.uint8)
     # CLAHE (Contrast Limited Adaptive Histogram Equalization)
     #img = exposure.rescale_intensity(img)
-    img = exposure.adjust_gamma(img, 2)
+    img = exposure.adjust_gamma(img, 1.5)
    
     return img,img_ori

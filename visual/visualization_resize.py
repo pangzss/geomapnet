@@ -16,11 +16,11 @@ from utils import *
 import cv2
 from skimage import exposure
 from common.train import load_state_dict
-# import mapnet 
-#import set_paths
+
 from models.posenet import PoseNet, MapNet
-#from torchvision import models 
+
 import configparser
+import argparse
 import time
 start = time.time()
 
@@ -72,7 +72,14 @@ def visualize(layer,block,activations,deconv_model,num_maps = 1):
     return actv_maps_sele, deconv_imgs            
 
 
-
+#config 
+parser = argparser.ArgumentParser(description='Filter visualization for MapNet')
+parser.add_argument('--dataset', type=str, choices=('7Scenes','AachenDay','AachenNight'
+                                                    'Cambridge','stylized'),
+                    help = 'Dataset')
+parser.add_argument('--model',type=str,choices=('stylized','ordinary'))
+parser.add_argument('--weights', type=str, help='trained weights to load')
+args = parser.parse_args()
 
 
 settings = configparser.ConfigParser()
@@ -87,14 +94,17 @@ posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False)
 mapnet_model = MapNet(mapnet=posenet)
 # load weights
 loc_func = lambda storage, loc: storage
-weights_dir = '../scripts/logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar'
+#weights_dir = '../scripts/logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar'
+weights_dir = './logs' + args.weights
 checkpoint= torch.load(weights_dir,map_location=loc_func)
 load_state_dict(mapnet_model,checkpoint['model_state_dict'])
 
 
 ####### visualization #######
 #img_file = './aachen1.jpg'
-img_file = './aachen1.jpg'
+path = 'data/'+args.dataset+'/'
+img_dirs = os.listdir(path) 
+
 # load an image
 img = load_image(img_file)
 #plt.figure(figsize = (10, 5))
@@ -164,7 +174,9 @@ def enhance(img):
     return img_copy
 
 fig1, ax1= plt.subplots(n_plts, n_plts)
+plt.subplots_adjust(wspace=0,hspace=0.05)
 fig2, ax2= plt.subplots(n_plts, n_plts)
+plt.subplots_adjust(wspace=0,hspace=0.05)
 for row in range(n_plts):
     for col in range(n_plts):
         ax1[row,col].imshow(actv_sele[row*3+col],cmap='gray')
@@ -173,7 +185,7 @@ for row in range(n_plts):
         ax2[row,col].axis('off')
 fig1.suptitle('activations: layer{}, block{}'.format(layer,block))
 fig2.suptitle('visualizations: layer{}, block{}'.format(layer,block))
-plt.subplots_adjust(wspace=0.025,hspace=0.025)
+
 plt.show(block=False)
 plt.show()
 
