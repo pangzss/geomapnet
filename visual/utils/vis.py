@@ -50,4 +50,4 @@ def tn_deconv_img(deconv_output):
     #img = exposure.rescale_intensity(img)
     img = exposure.adjust_gamma(img, 1.5)
    
-    return img,img_ori
+    return img
