@@ -1,10 +1,15 @@
 import matplotlib.pyplot as plt
 
 from math import sqrt, ceil
+import torch
 import numpy as np
 import cv2
 import pdb
-from skimage import exposure
+from skimage import exposure, img_as_ubyte
+from skimage.feature import peak_local_max,corner_peaks
+
+from skimage.filters.rank import median
+from skimage.morphology import disk
 # visualize a feature map in a grid
 def vis_grid(feat_map): # feat_map: (C, H, W, 1)
     (C, H, W, B) = feat_map.shape
@@ -33,21 +38,12 @@ def vis_layer(feat_map_grid):
 
 # transform and normalize a deconvolutional output image
 def tn_deconv_img(deconv_output):
-    img_ori = deconv_output.data.numpy()[0].transpose(1, 2, 0)  # (H, W, C)
-    img = img_ori.copy()
-    #equ = cv2.equalizeHist(img)
+    #print(deconv_output[0].shape)
+    img_ori = deconv_output.data[0].permute(1, 2, 0).numpy()  # (H, W, C)
 
-    # normalize
-    for i in range(3):
-        if img[:,:,i].max() != img[:,:,i].min():
-            img[:,:,i] = 255*(img[:,:,i] - img[:,:,i].min()) / (img[:,:,i].max() - img[:,:,i].min() )
-        else:
-            img[:,:,i] = 255*(img[:,:,i] - img[:,:,i].min()) / (img[:,:,i].max()+1e-05)
-    #img[:,:,1] = (img[:,:,1] - img[:,:,1].min()) / (img[:,:,1].max() - img[:,:,1].min())*255
-    #img[:,:,2] = (img[:,:,2] - img[:,:,2].min()) / (img[:,:,2].max() - img[:,:,2].min())*255
-    img = img.astype(np.uint8)
-    # CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    #img = exposure.rescale_intensity(img)
-    img = exposure.adjust_gamma(img, 1.5)
-   
+    img = img_ori.copy()
+    
+    img = img - img.min()
+    img /= img.max()
+
     return img

@@ -5,47 +5,45 @@ def deconv3x3(in_planes,out_planes,stride=1, output_padding=0):
     """ 3x3 deconvolution """
     return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=3, stride=stride, 
                             padding=1, output_padding=output_padding, bias=False)
-def conv1x1(in_planes, out_planes, stride=1):
+def up1x1(in_planes, out_planes, stride=1):
     """1x1 convoluton for later downsampling"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, 
-                                             bias=False)
+    return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=1, stride=stride, 
+                                             bias=False,output_padding=1)
 
 class Block(nn.Module):
 
-    def __init__(self, in_planes, out_planes, identity, stride=1,output_padding=0):
+    def __init__(self, in_planes, out_planes, stride=1,output_padding=0, upsample = None):
         super(Block, self).__init__()
 
-        self.identity = identity
         self.relu1 = nn.ReLU(inplace=True)
         self.deconv1 = deconv3x3(in_planes,in_planes)
-        self.bn1 = nn.BatchNorm2d(in_planes)
-
+        
         self.relu2 = nn.ReLU(inplace=True)
         # may need to upsample
         self.deconv2 = deconv3x3(in_planes,out_planes,stride = stride, output_padding = output_padding)
-        self.bn2 = nn.BatchNorm2d(out_planes)
-        # for downsampling the act map from the previous conv block (later deconv block)
-        #self.downsample = downsample
-    def forward(self,x): # id_map
-        out = x - self.identity
-        out = self.relu1(x)
-        out = self.deconv1(x)
-        out = self.bn1(x)
 
-        out = self.relu2(x)
-        out = self.deconv2(x)
-        out = self.bn2(out)
+        # for downsampling the act map from the previous conv block (later deconv block)
+        self.upsample = upsample
+    def forward(self,x): 
+    
+        out = self.relu1(x)
+        out = self.deconv1(out)
+      
+
+        out = self.relu2(out)
+        out = self.deconv2(out)
         
-        #if self.downsample is not None:
-        #    self.activ_blk_next = self.downsample(activ_blk_next)
+        
+        if self.upsample is not None:
+           out += self.upsample(x)
 
         return out
 
-class Deconv_ResNet(nn.Module):
-    def __init__(self, identity_maps):
-        super(Deconv_ResNet, self).__init__()
-        
-        self.identity_maps = identity_maps
+class transposeConv_resnet(nn.Module):
+    def __init__(self):
+        super(transposeConv_resnet, self).__init__()
+        self.name = 'transposeConv'
+  
         block = Block
         self.num_blocks_layers = [3, 6, 4, 3]
 
@@ -59,39 +57,28 @@ class Deconv_ResNet(nn.Module):
         self.conv_last = nn.ConvTranspose2d(64,3,kernel_size=7,stride=2,
                                             padding=1, output_padding=1)
         
-        #self.conv2deconv_layer_indices = {1:4, 2:3, 3:2, 4,1}
-        #self.
+    
     def _make_layer(self, block, num_blocks, planes, out_planes, layer_idx, stride=1):
-        downsample = None
+        upsample = None
         output_padding = 0
 
-        identity_layer = self.identity_maps['layer'+str(4-layer_idx+1)]
-        #if layer_idx != 4:
-        #    id_layer_curr = self.identity_maps['layer'+str(4-layer_idx+1)] 
-        #    id_layer_next = self.identity_maps['layer'+str(4-layer_idx)]
-        #else:
-        #    id_layer_curr = self.identity_maps['layer'+str(4-layer_idx+1)]
-        #    id_layer_next = self.identity_maps['maxpool']['activation']
-     
-
+    
         if stride !=1 :
             output_padding = 1
+            upsample = up1x1(planes,out_planes,stride=stride)
             
         layers = []
-        for i in range(num_blocks-1):
-            id_for_blk_i =  identity_layer['block'+str(num_blocks-1-i)]
-            layers.append(block(planes,planes,id_for_blk_i))
-        
-        # the second to last needs downsampling
-        #activ_blk_next = activ_layer_curr['block'+str(num_blocks-2+1)]
-        #layers.append(block(planes,planes,activ_blk_next,downsample=downsample))
-        # the last needs upsampling (via stride)
 
-        layers.append(block(planes,out_planes,identity_layer['block0'],stride=stride,output_padding = output_padding))
+        for i in range(num_blocks-1):
+            layers.append(block(planes,planes))
+        
+  
+
+        layers.append(block(planes,out_planes,stride=stride,output_padding = output_padding, upsample = upsample))
   
         return nn.Sequential(*layers)
 
-    def _forward_impl(self, x,conv_layer_idx,conv_blk_idx):
+    def _forward_impl(self, x,conv_layer_idx,conv_blk_idx,pool_idces):
         #conv_layer_idx : the layer index the chosen activation map is in 
         #conv_blk_idx : the blk index the chosen activation map is in
         deconv_layer_idx = 4 - conv_layer_idx + 1
@@ -103,24 +90,19 @@ class Deconv_ResNet(nn.Module):
                 blk = layer[curr_blk]
             
                 x = blk(x)
+                #print(x.shape,'layer:',curr_layer,'block',curr_blk)
                 
             deconv_blk_idx = 0
             if curr_layer < 4:
                 num_blks_curr_layer = self.num_blocks_layers[curr_layer]
 
-        
-        #x = self.layer1(x)
-        #x = self.layer2(x)
-        #x = self.layer3(x)
-        #x = self.layer4(x)
-
-        pool_idx = self.identity_maps['maxpool']['pool_indices']
-        x = self.unpool(x,pool_idx)
+       
+        x = self.unpool(x,pool_idces)
         x = self.relu(x)
         x = self.conv_last(x)
-
+    
         return x
 
-    def forward(self, x,conv_layer_idx,conv_blk_idx):
-        return self._forward_impl(x,conv_layer_idx,conv_blk_idx)
+    def forward(self, x,conv_layer_idx,conv_blk_idx,pool_idces):
+        return self._forward_impl(x,conv_layer_idx,conv_blk_idx,pool_idces)
 

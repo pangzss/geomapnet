@@ -1,4 +1,4 @@
-python visualization_resize.py --dataset AachenDay --model stylized \
---weights logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar \
---seed 2 --layer 3 --block 2 --automode 1
+python visual_single.py --dataset Dog_and_Cat --model classification \
+--weights logs/stylized_models/AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar \
+--seed 0 --layer 4 --block 0 --automode 0
 
