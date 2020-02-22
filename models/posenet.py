@@ -63,6 +63,7 @@ class PoseNet(nn.Module):
           nn.init.constant_(m.bias.data, 0)
 
   def forward(self, x):
+    
     x = self.feature_extractor(x)
     x = F.relu(x)
     if self.droprate > 0:
@@ -90,8 +91,12 @@ class MapNet(nn.Module):
     :return: pose outputs
      (N x T x 6)
     """
+   
     s = x.size()
-    x = x.view(-1, *s[2:])
+    if len(s) == 5:
+      x = x.view(-1, *s[2:])
+    else:
+      x = x.view(-1, *s[1:])
     poses = self.mapnet(x)
     poses = poses.view(s[0], s[1], -1)
     return poses

@@ -12,7 +12,7 @@ import matplotlib.cm as mpl_color_map
 import torch
 from torch.autograd import Variable
 from torchvision import models
-
+import torchvision.transforms as transforms
 
 def convert_to_grayscale(im_as_arr):
     """
@@ -32,7 +32,7 @@ def convert_to_grayscale(im_as_arr):
     return grayscale_im
 
 
-def save_gradient_images(gradient, file_name):
+def save_gradient_images(gradient, to_folder, file_name,pretrained,task):
     """
         Exports the original gradient image
 
@@ -40,16 +40,40 @@ def save_gradient_images(gradient, file_name):
         gradient (np arr): Numpy array of the gradient with shape (3, 224, 224)
         file_name (str): File name to be exported
     """
-    if not os.path.exists('../results'):
-        os.makedirs('../results')
+     
+    if pretrained == True:
+        path = './'+to_folder+'/'+task+'/pretrained'
+    else:
+        path = './'+to_folder+'/'+task+'/randomized'
+    if not os.path.exists(path):
+            os.makedirs(path)
     # Normalize
     gradient = gradient - gradient.min()
     gradient /= gradient.max()
     # Save image
-    path_to_file = os.path.join('../results', file_name + '.jpg')
+    path_to_file = os.path.join(path, file_name + '.png')
     save_image(gradient, path_to_file)
-
-
+def save_grad_cam(original, cam, file_name,pretrained,task):
+   
+    to_folder = 'gradcam'
+    if pretrained == True:
+        path = './'+to_folder+'/'+task+'/pretrained'
+    else:
+        path = './'+to_folder+'/'+task+'/randomized'
+    if not os.path.exists(path):
+            os.makedirs(path)
+    # Grayscale activation map
+    heatmap, heatmap_on_image = apply_colormap_on_image(original, cam, 'hsv')
+    
+    # Save colored heatmap
+    path_to_file = os.path.join(path, file_name +'_Cam_Heatmap.png')
+    save_image(heatmap, path_to_file)
+    # Save heatmap on iamge
+    path_to_file = os.path.join(path, file_name +'_Cam_On_Image.png')
+    save_image(heatmap_on_image, path_to_file)
+    # SAve grayscale heatmap
+    path_to_file = os.path.join(path, file_name +'_Cam_Grayscale.png')
+    save_image(cam, path_to_file)
 def save_class_activation_images(org_img, activation_map, file_name):
     """
         Saves cam activation map and activation map on the original image
@@ -92,6 +116,7 @@ def apply_colormap_on_image(org_im, activation, colormap_name):
     no_trans_heatmap = Image.fromarray((no_trans_heatmap*255).astype(np.uint8))
 
     # Apply heatmap on iamge
+    
     heatmap_on_image = Image.new("RGBA", org_im.size)
     heatmap_on_image = Image.alpha_composite(heatmap_on_image, org_im.convert('RGBA'))
     heatmap_on_image = Image.alpha_composite(heatmap_on_image, heatmap)
@@ -238,3 +263,71 @@ def get_example_params(example_index):
             target_class,
             file_name_to_export,
             pretrained_model)
+
+####################################
+def preprocess(img):
+
+    img = np.asarray(img.resize((224, 224))) # resize to 224 * 224 (W * H), np.asarray returns (H, W, C)
+    img = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])(img)
+   
+    img = img[None,:,:,:]
+    return img
+def preprocess_cam(img):
+    img = img.resize((224, 224))
+    img_t = np.asarray(img.copy()) # resize to 224 * 224 (W * H), np.asarray returns (H, W, C)
+    img_t = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])(img_t)
+   
+    img_t = img_t[None,:,:,:]
+    return img_t,img
+
+def load_image(filename):
+    img = Image.open(filename).convert('RGB')
+    return img
+    
+def get_patch_slice(actv_map,max_index,kernel_size=3):
+    H,W = actv_map.shape[2:]
+    h,w = max_index[2:]
+
+    radius = (kernel_size - 1)/2
+
+    left = w - radius
+    right = w + radius + 1
+    w_slice = slice( int(left*(left>0)), int(right - (right-W)*(right>W)))
+
+    up = h - radius
+    down = h + radius + 1
+    h_slice = slice(int(up*(up>0)), int(down - (down-H)*(down>H)))
+
+    return (max_index[0],max_index[1],h_slice, w_slice)
+
+def get_strongest_filters(activation_img, top=3):
+    
+    activation_img = activation_img.detach().numpy()
+    # Find maximum activation for each filter for a given image
+    activation_img = np.nanmax(activation_img, axis=3)
+    activation_img = np.nanmax(activation_img, axis=2)
+
+    activation_img = activation_img.sum(0)
+
+    # Make activations 1-based indexing
+    #activation_img = np.insert(activation_img, 0, 0.0)
+
+    #  activation_image is now a vector of length equal to number of filters (plus one for one-based indexing)
+    #  each entry corresponds to the maximum/summed activation of each filter for a given image
+
+    top_filters = activation_img.argsort()[-top:]
+    return list(top_filters)
+
+def get_filter_idces(seed,num_filters):
+    num_filters_layer = [64,128,256,512]
+    np.random.seed(seed)
+    idces = np.random.randint(num_filters_layer[seed-1],size=num_filters)
+    return idces
