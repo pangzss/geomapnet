@@ -30,8 +30,46 @@ def convert_to_grayscale(im_as_arr):
     grayscale_im = (np.clip((grayscale_im - im_min) / (im_max - im_min), 0, 1))
     grayscale_im = np.expand_dims(grayscale_im, axis=0)
     return grayscale_im
+def save_original_images_style(img, to_folder, file_name,style,task):
+    """
+        Exports the original gradient image
 
+    Args:
+        gradient (np arr): Numpy array of the gradient with shape (3, 224, 224)
+        file_name (str): File name to be exported
+    """
+     
+    
+    path = './figs/'+to_folder+'/'+task+'/'+style
 
+    if not os.path.exists(path):
+            os.makedirs(path)
+   
+    # Save image
+    path_to_file = os.path.join(path, file_name + '.png')
+    save_image(img, path_to_file)
+def save_gradient_images_style(gradient, to_folder, file_name,style,task):
+    """
+        Exports the original gradient image
+
+    Args:
+        gradient (np arr): Numpy array of the gradient with shape (3, 224, 224)
+        file_name (str): File name to be exported
+    """
+     
+    
+    path = './figs/'+to_folder+'/'+task+'/'+style
+  
+
+    if not os.path.exists(path):
+            os.makedirs(path)
+    # Normalize
+    gradient = gradient - gradient.min()
+    if gradient.max() != 0:
+        gradient /= gradient.max()
+    # Save image
+    path_to_file = os.path.join(path, file_name + '.png')
+    save_image(gradient, path_to_file)
 def save_gradient_images(gradient, to_folder, file_name,pretrained,task):
     """
         Exports the original gradient image
@@ -42,9 +80,9 @@ def save_gradient_images(gradient, to_folder, file_name,pretrained,task):
     """
      
     if pretrained == True:
-        path = './'+to_folder+'/'+task+'/pretrained'
+        path = './figs/'+to_folder+'/'+task+'/pretrained'
     else:
-        path = './'+to_folder+'/'+task+'/randomized'
+        path = './figs/'+to_folder+'/'+task+'/randomized'
     if not os.path.exists(path):
             os.makedirs(path)
     # Normalize
@@ -57,9 +95,9 @@ def save_grad_cam(original, cam, file_name,pretrained,task):
    
     to_folder = 'gradcam'
     if pretrained == True:
-        path = './'+to_folder+'/'+task+'/pretrained'
+        path = './figs/'+to_folder+'/'+task+'/pretrained'
     else:
-        path = './'+to_folder+'/'+task+'/randomized'
+        path = './figs/'+to_folder+'/'+task+'/randomized'
     if not os.path.exists(path):
             os.makedirs(path)
     # Grayscale activation map

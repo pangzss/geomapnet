@@ -18,7 +18,7 @@ import numpy as np
 from utils import *
 from common.train import load_state_dict
 from models.posenet import PoseNet, MapNet
-from conv_resnet import resnet34
+
 
 class GuidedBackprop():
     """
@@ -82,8 +82,8 @@ class GuidedBackprop():
             corresponding_forward_output = self.forward_relu_outputs[-1]
             corresponding_forward_output[corresponding_forward_output > 0] = 1
            
-            #modified_grad_in =  torch.clamp(grad_in[0], min=0.0)
-            modified_grad_in =  grad_in[0] # vanilla
+            modified_grad_in =  torch.clamp(grad_in[0], min=0.0)
+            #modified_grad_in =  grad_in[0] # vanilla
             del self.forward_relu_outputs[-1]  # Remove last forward output
            
             return (modified_grad_in,)
@@ -158,14 +158,14 @@ def get_model(task,pretrained):
     else:
         # adapted resnet34 with forward hooks
         feature_extractor = models.resnet34(pretrained=False)
-        posenet = PoseNet(feature_extractor, droprate=None, pretrained=False)
+        posenet = PoseNet(feature_extractor, droprate=0., pretrained=False)
 
         mapnet_model = MapNet(mapnet=posenet)
         if pretrained == True:
             # load weights
             loc_func = lambda storage, loc: storage
             #weights_dir = '../scripts/logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar'
-            weights_dir = './logs/stylized_models/AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar'
+            weights_dir = './logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar'
             checkpoint= torch.load(weights_dir,map_location=loc_func)
             load_state_dict(mapnet_model,checkpoint['model_state_dict'])
 
@@ -199,7 +199,7 @@ def pipe_line(model, img_path, layer, block, to_folder, filter_idx = None, pretr
         file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_filterNo.'+str(filter_idx)
     else:
         file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)
-    save_gradient_images(pos_sal, to_folder, file_name_to_export, pretrained,task)
+    save_gradient_images(guided_grads, to_folder, file_name_to_export, pretrained,task)
     #save_gradient_images(neg_sal, file_name_to_export + '_neg_sal')
     #plt.imshow(grayscale_guided_grads[0],cmap='gray')
     #plt.imshow(pos_sal.transpose(1,2,0))
@@ -211,7 +211,7 @@ if __name__ == '__main__':
  
     
     task_list = ['classification','localization']
-    task_index = 0
+    task_index = 1
     task = task_list[task_index]
     img_paths = ['./imgs/cat_dog.png',
                  './imgs/aachen1.jpg']
@@ -219,7 +219,7 @@ if __name__ == '__main__':
     pretrained = True
     model = get_model(task,pretrained)
     num_blocks = [3,4,6,3]
-    to_folder = 'vanilla'
+    to_folder = 'sanity'
     for layer in range(1,4+1):
         for block in range(0,num_blocks[layer-1]):
             
