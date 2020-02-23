@@ -37,9 +37,9 @@ class CamExtractor():
             self.conv_output = output
         try:
             resnet = self.model._modules['mapnet']._modules['feature_extractor']
-            self.hook_list.append(resnet._modules['layer'+str(self.target_layer)][self.target_block].register_forward_hook(hook_function))
+            self.hook_list.append(resnet._modules['layer'+str(self.target_layer)][self.target_block]._modules['conv2'].register_forward_hook(hook_function))
         except KeyError:
-            self.hook_list.append(self.model._modules['layer'+str(self.target_layer)][self.target_block].register_forward_hook(hook_function))
+            self.hook_list.append(self.model._modules['layer'+str(self.target_layer)][self.target_block]._modules['conv2'].register_forward_hook(hook_function))
         
     def forward(self,x):
         
@@ -63,18 +63,25 @@ class GradCam():
         except RuntimeError:
             
             dLdp = torch.FloatTensor(1, 1000).zero_()
-            dLdp[0][50] = 1
+            max_idx = torch.argmax(model_output)
+            
+            dLdp[0][max_idx] = 1
             model_output.backward(gradient=dLdp)
 
         dpdx = self.extractor.gradients.data.numpy()[0]
         target = conv_output.data.numpy()[0]
         weights = np.mean(dpdx,axis=(1,2))
-        cam = 0.01*np.ones(target.shape[1:],dtype=np.float32)
+    
+        cam = np.ones(target.shape[1:],dtype=np.float32)
         for i,w in enumerate(weights):
+        
             cam += w * target[i,:,:]
+        print(cam.max())
         cam = np.maximum(cam,0)
        
-        cam = (cam - np.min(cam)) / (np.max(cam) - np.min(cam))
+        #cam = (cam - np.min(cam)) / (np.max(cam) - np.min(cam))
+        cam = cam -np.min(cam)
+        cam = cam / np.max(cam)
         cam = np.uint8(cam*255)
         cam = np.uint8(Image.fromarray(cam).resize((input_image.shape[2],
                        input_image.shape[3]), Image.ANTIALIAS))/255
@@ -143,7 +150,7 @@ if __name__ == '__main__':
     task_list = ['classification','localization']
     img_paths = ['./imgs/cat_dog.png',
                  './imgs/aachen1.jpg']
-    task_index = 1
+    task_index = 0
     task = task_list[task_index]
     img_path = img_paths[task_index]
 

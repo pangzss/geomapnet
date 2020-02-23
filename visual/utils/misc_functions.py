@@ -8,7 +8,7 @@ import copy
 import numpy as np
 from PIL import Image
 import matplotlib.cm as mpl_color_map
-
+import cv2
 import torch
 from torch.autograd import Variable
 from torchvision import models
@@ -63,8 +63,8 @@ def save_grad_cam(original, cam, file_name,pretrained,task):
     if not os.path.exists(path):
             os.makedirs(path)
     # Grayscale activation map
-    heatmap, heatmap_on_image = apply_colormap_on_image(original, cam, 'hsv')
-    
+    heatmap, heatmap_on_image = apply_colormap_on_image(original, cam, 'bwr')
+    #heatmap, heatmap_on_image =  show_cam_on_image(original, cam)
     # Save colored heatmap
     path_to_file = os.path.join(path, file_name +'_Cam_Heatmap.png')
     save_image(heatmap, path_to_file)
@@ -74,6 +74,13 @@ def save_grad_cam(original, cam, file_name,pretrained,task):
     # SAve grayscale heatmap
     path_to_file = os.path.join(path, file_name +'_Cam_Grayscale.png')
     save_image(cam, path_to_file)
+def show_cam_on_image(img, mask):
+    heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+    heatmap = np.float32(heatmap) / 255
+    cam = heatmap + np.float32(img)
+    cam = cam / np.max(cam)
+    return heatmap, cam
+
 def save_class_activation_images(org_img, activation_map, file_name):
     """
         Saves cam activation map and activation map on the original image
