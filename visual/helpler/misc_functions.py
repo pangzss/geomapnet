@@ -42,8 +42,8 @@ def save_original_images_style(img, to_folder, file_name,style,task):
     
     path = './figs/'+to_folder+'/'+task+'/'+style
 
-    if not os.path.exists(path):
-            os.makedirs(path)
+    #if not os.path.exists(path):
+    #        os.makedirs(path)
    
     # Save image
     path_to_file = os.path.join(path, file_name + '.png')
@@ -205,6 +205,7 @@ def save_image(im, path):
     if isinstance(im, (np.ndarray, np.generic)):
         im = format_np_output(im)
         im = Image.fromarray(im)
+        
     im.save(path)
 
 

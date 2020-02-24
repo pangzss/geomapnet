@@ -12,7 +12,8 @@ def pipe_line(model, img_path, layer, block, to_folder, filter_idx = None, top_i
     # preprocess an image, return a pytorch variable
     input_img = preprocess(img)
     input_img.requires_grad = True
-  
+    
+    
     # Guided backprop
     GBP = GuidedBackprop(model, layer, block,filter_idx = filter_idx)
     # Get gradients
@@ -27,26 +28,27 @@ def pipe_line(model, img_path, layer, block, to_folder, filter_idx = None, top_i
     # Positive and negative saliency maps
     #pos_sal, _ = get_positive_negative_saliency(guided_grads)
 
-    file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_filterNo.'+str(filter_idx)+'_top'+str(top_idx)
-    
+    #file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_filterNo.'+str(filter_idx)+'_top'+str(top_idx)
+    file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_top'+str(top_idx+1)
     save_gradient_images_style(guided_grads, to_folder, file_name_to_export,style,task)
+
+    img = np.asarray(img.resize((224, 224)))
     save_original_images_style(img, to_folder, file_name_to_export+'ori',style,task)
     #save_gradient_images(neg_sal, file_name_to_export + '_neg_sal')
     #plt.imshow(grayscale_guided_grads[0],cmap='gray')
     #plt.imshow(pos_sal.transpose(1,2,0))
     #plt.show(block=False)
     #plt.show()
-    print('Guided backprop completed. Layer {}, block {}, filter No.{}, top {}'.format(layer, block, filter_idx,top_idx))
+    print('Guided backprop completed. Layer {}, block {}, filter No.{}, top {}'.format(layer, block, filter_idx,top_idx+1))
 
 if __name__ == '__main__':
-    filterMaxima = torch.load('./figs/AachenDay_files/filterMaxima.pt')
+    filterMaxima = torch.load('./figs/AachenDay_files/filterMaxima_ns.pt')
     
     # choose top 
 
     task = 'localization/guidedbp'
-    img_paths = \
-    img_path = \
-    style = 'Four_styles'
+
+    style = 'No_style'
     model = get_model(task,pretrained=True)
     num_blocks = [3,4,6,3]
     to_folder = 'AachenDay_files'
@@ -64,7 +66,7 @@ if __name__ == '__main__':
             maxima_img_h2l = np.argsort(maxima_values)[::-1][:topK]
             maxima_img_filter_idces = maxima_filter_idces[maxima_img_h2l]
 
-            with open('./figs/AachenDay_files/img_dirs.txt', 'rb') as fb:
+            with open('./figs/AachenDay_files/img_dirs_ns.txt', 'rb') as fb:
                 img_dirs = pickle.load(fb)
 
             imgs_selected = []

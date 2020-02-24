@@ -2,15 +2,9 @@ import sys
 sys.path.append('../')
 import os
 import os.path as osp
-import torch
-import torch.nn as nn
-import torchvision.transforms as transforms
-from torch.autograd import Variable
-from PIL import Image
 import numpy as np
 from utils import *
-from common.train import load_state_dict
-from models.posenet import PoseNet, MapNet
+
 import pickle
 
 
@@ -46,29 +40,7 @@ class StrongFilterExtractor():
  
         return self.filter_maxima
 
-def get_model(task,pretrained):
-    if task == 'classification':
-        model = models.resnet34(pretrained=pretrained)
-    else:
-        # adapted resnet34 with forward hooks
-        feature_extractor = models.resnet34(pretrained=False)
-        posenet = PoseNet(feature_extractor, droprate=0., pretrained=False)
-
-        mapnet_model = MapNet(mapnet=posenet)
-        if pretrained == True:
-            # load weights
-            loc_func = lambda storage, loc: storage
-            #weights_dir = '../scripts/logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar'
-            weights_dir = './logs/stylized_models/AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar'
-            checkpoint= torch.load(weights_dir,map_location=loc_func)
-            load_state_dict(mapnet_model,checkpoint['model_state_dict'])
-
-        feature_extractor = mapnet_model._modules['mapnet']._modules['feature_extractor']
-        model = feature_extractor 
-    return model
-
-
-if __name__ == '__main__':
+def generate_strong_filters(model,dataset,path1,path2):
     
     dataset = 'AachenDay'
     path = osp.join('data', dataset)
@@ -80,14 +52,10 @@ if __name__ == '__main__':
         img = preprocess(img)
         img_tensor[i] = img
     
-    pretrained = True
-    task = 'localization'
-    model = get_model(task,pretrained)
-    
 
     filterExtractor = StrongFilterExtractor(model, img_tensor)
     filterMaxima = filterExtractor.get_maxima()
-    torch.save(filterMaxima,'./AachenDay_files/filterMaxima.pt')
+    torch.save(filterMaxima,path1)
 
-    with open('./AachenDay_files/img_dirs.txt', 'wb') as fp:
+    with open(path2, 'wb') as fp:
         pickle.dump(img_dirs, fp)

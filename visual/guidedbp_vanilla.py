@@ -9,25 +9,19 @@ sys.path.append('../')
 
 import torch
 from torch.nn import ReLU
-import matplotlib.pyplot as plt
 
-import torchvision.models as models
-
-from PIL import Image
 import numpy as np
 from utils import *
-from common.train import load_state_dict
-from models.posenet import PoseNet, MapNet
-
 
 class GuidedBackprop():
     """
        Produces gradients generated with guided back propagation from the given image
     """
-    def __init__(self, model,selected_layer,selected_block, filter_idx=None):
+    def __init__(self, model,selected_layer,selected_block, method, filter_idx=None):
         self.model = model
         self.selected_layer = selected_layer
         self.selected_block = selected_block
+        self.method = method
         self.num_maps = 1
         self.conv_output = 0
         self.gradients = None
@@ -42,9 +36,7 @@ class GuidedBackprop():
         self.hook_layer_backward()
         self.hook_layer_forward()
 
-         # Create the folder to export images if not exists
-        if not os.path.exists('../generated'):
-            os.makedirs('../generated')
+    
     def hook_layer_backward(self):
         def hook_function(module, grad_in, grad_out):
             self.gradients = grad_in[0]
@@ -81,9 +73,10 @@ class GuidedBackprop():
    
             corresponding_forward_output = self.forward_relu_outputs[-1]
             corresponding_forward_output[corresponding_forward_output > 0] = 1
-           
-            modified_grad_in =  torch.clamp(grad_in[0], min=0.0)
-            #modified_grad_in =  grad_in[0] # vanilla
+            if self.method == 'guidedbp':
+                modified_grad_in =  torch.clamp(grad_in[0], min=0.0)
+            elif self.method == 'vanilla':
+                modified_grad_in =  grad_in[0] # vanilla
             del self.forward_relu_outputs[-1]  # Remove last forward output
            
             return (modified_grad_in,)
@@ -133,55 +126,18 @@ class GuidedBackprop():
 
         return gradients_as_arr
 
-    def get_strongest_filters(self, activation_img, top=3):
+def pipe_line(method, model, img_path, layer, block, to_folder, style, top_idx = None,filter_idx = None):
     
-        activation_img = activation_img.detach().numpy()
-        # Find maximum activation for each filter for a given image
-        activation_img = np.nanmax(activation_img, axis=3)
-        activation_img = np.nanmax(activation_img, axis=2)
+    assert method == 'guidedbp' or method == 'vanilla', KeyError
 
-        activation_img = activation_img.sum(0)
-
-        # Make activations 1-based indexing
-        #activation_img = np.insert(activation_img, 0, 0.0)
-
-        #  activation_image is now a vector of length equal to number of filters (plus one for one-based indexing)
-        #  each entry corresponds to the maximum/summed activation of each filter for a given image
-
-        top_filters = activation_img.argsort()[-top:]
-        return list(top_filters)
-    
-
-def get_model(task,pretrained):
-    if task == 'classification':
-        model = models.resnet34(pretrained=pretrained)
-    else:
-        # adapted resnet34 with forward hooks
-        feature_extractor = models.resnet34(pretrained=False)
-        posenet = PoseNet(feature_extractor, droprate=0., pretrained=False)
-
-        mapnet_model = MapNet(mapnet=posenet)
-        if pretrained == True:
-            # load weights
-            loc_func = lambda storage, loc: storage
-            #weights_dir = '../scripts/logs/stylized_models/AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar'
-            weights_dir = './logs/stylized_models/AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar'
-            checkpoint= torch.load(weights_dir,map_location=loc_func)
-            load_state_dict(mapnet_model,checkpoint['model_state_dict'])
-
-        feature_extractor = mapnet_model._modules['mapnet']._modules['feature_extractor']
-        model = feature_extractor 
-    return model
-
-def pipe_line(model, img_path, layer, block, to_folder, filter_idx = None, pretrained=False,task='classification'):
-  
     img_file = img_path
     # load an image
     img = load_image(img_file)
     # preprocess an image, return a pytorch variable
     input_img = preprocess(img)
     input_img.requires_grad = True
-  
+    
+    
     # Guided backprop
     GBP = GuidedBackprop(model, layer, block,filter_idx = filter_idx)
     # Get gradients
@@ -194,39 +150,19 @@ def pipe_line(model, img_path, layer, block, to_folder, filter_idx = None, pretr
     # Save grayscale gradients
     #save_gradient_images(grayscale_guided_grads, file_name_to_export + '_Guided_BP_gray')
     # Positive and negative saliency maps
-    pos_sal, _ = get_positive_negative_saliency(guided_grads)
-    if filter_idx != None:
-        file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_filterNo.'+str(filter_idx)
-    else:
-        file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)
-    save_gradient_images(guided_grads, to_folder, file_name_to_export, pretrained,task)
+    #pos_sal, _ = get_positive_negative_saliency(guided_grads)
+
+    #file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_filterNo.'+str(filter_idx)+'_top'+str(top_idx)
+    file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_top'+str(top_idx+1)
+    save_gradient_images_style(guided_grads, to_folder, file_name_to_export,style)
+
+    img = np.asarray(img.resize((224, 224)))
+    save_original_images_style(img, to_folder, file_name_to_export+'ori',style)
     #save_gradient_images(neg_sal, file_name_to_export + '_neg_sal')
     #plt.imshow(grayscale_guided_grads[0],cmap='gray')
     #plt.imshow(pos_sal.transpose(1,2,0))
     #plt.show(block=False)
     #plt.show()
-    print('Guided backprop completed. Layer {}, block {}, filter No.{}'.format(layer, block, filter_idx))
+    print('Guided backprop completed. Layer {}, block {}, filter No.{}, top {}'.format(layer, block, filter_idx,top_idx+1))
 
-if __name__ == '__main__':
- 
-    
-    task_list = ['classification','localization']
-    task_index = 1
-    task = task_list[task_index]
-    img_paths = ['./imgs/cat_dog.png',
-                 './imgs/aachen1.jpg']
-    img_path = img_paths[task_index]
-    pretrained = True
-    model = get_model(task,pretrained)
-    num_blocks = [3,4,6,3]
-    to_folder = 'sanity'
-    for layer in range(1,4+1):
-        for block in range(0,num_blocks[layer-1]):
-            
-            filter_idces = get_filter_idces(layer,4)
-            
-        
-            for idx in filter_idces:
 
-                pipe_line(model, img_path, layer, block, to_folder,filter_idx = idx, pretrained=pretrained,task = task)
-   
