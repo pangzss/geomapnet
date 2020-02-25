@@ -21,7 +21,7 @@ class GuidedBackprop():
         self.model = model
         self.selected_layer = selected_layer
         self.selected_block = selected_block
-        self.method = method
+        self.method = method 
         self.num_maps = 1
         self.conv_output = 0
         self.gradients = None
@@ -106,9 +106,6 @@ class GuidedBackprop():
 
     def generate_gradients(self, input_image):
         # Forward pass
-        
-
-
         x = input_image
         x = self.model(x)
         
@@ -126,43 +123,18 @@ class GuidedBackprop():
 
         return gradients_as_arr
 
-def pipe_line(method, model, img_path, layer, block, to_folder, style, top_idx = None,filter_idx = None):
+def pipe_line(img, model, layer, block, method, filter_idx = None):
     
     assert method == 'guidedbp' or method == 'vanilla', KeyError
-
-    img_file = img_path
-    # load an image
-    img = load_image(img_file)
-    # preprocess an image, return a pytorch variable
-    input_img = preprocess(img)
+    input_img = img.clone()
     input_img.requires_grad = True
     
     
     # Guided backprop
-    GBP = GuidedBackprop(model, layer, block,filter_idx = filter_idx)
+    GBP = GuidedBackprop(model, layer, block, method, filter_idx = filter_idx)
     # Get gradients
     guided_grads = GBP.generate_gradients(input_img)
-    # Save colored gradients
-
-    #save_gradient_images(guided_grads, file_name_to_export, pretrained)
-    # Convert to grayscale
-    #grayscale_guided_grads = convert_to_grayscale(guided_grads)
-    # Save grayscale gradients
-    #save_gradient_images(grayscale_guided_grads, file_name_to_export + '_Guided_BP_gray')
-    # Positive and negative saliency maps
-    #pos_sal, _ = get_positive_negative_saliency(guided_grads)
-
-    #file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_filterNo.'+str(filter_idx)+'_top'+str(top_idx)
-    file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_top'+str(top_idx+1)
-    save_gradient_images_style(guided_grads, to_folder, file_name_to_export,style)
-
-    img = np.asarray(img.resize((224, 224)))
-    save_original_images_style(img, to_folder, file_name_to_export+'ori',style)
-    #save_gradient_images(neg_sal, file_name_to_export + '_neg_sal')
-    #plt.imshow(grayscale_guided_grads[0],cmap='gray')
-    #plt.imshow(pos_sal.transpose(1,2,0))
-    #plt.show(block=False)
-    #plt.show()
-    print('Guided backprop completed. Layer {}, block {}, filter No.{}, top {}'.format(layer, block, filter_idx,top_idx+1))
+   
+    return guided_grads
 
 

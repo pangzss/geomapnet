@@ -6,7 +6,7 @@ import numpy as np
 from utils import *
 
 import pickle
-
+import torch
 
 class StrongFilterExtractor():
     def __init__(self,model,image_tensor):
@@ -41,8 +41,6 @@ class StrongFilterExtractor():
         return self.filter_maxima
 
 def generate_strong_filters(model,dataset,path1,path2):
-    
-    dataset = 'AachenDay'
     path = osp.join('data', dataset)
     img_dirs = os.listdir(path) 
     img_tensor = torch.zeros(len(img_dirs),3,224,224)
