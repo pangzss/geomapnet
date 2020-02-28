@@ -111,8 +111,10 @@ class GuidedBackprop():
         
         # Zero gradients
         self.model.zero_grad()
-        loss = torch.mean(self.conv_output)
+        loss = torch.max(self.conv_output)
         loss.backward()
+
+
         # Convert Pytorch variable to numpy array
         # [0] to get rid of the first channel (1,3,224,224)
         gradients_as_arr = self.gradients.data.numpy()[0]
@@ -122,6 +124,24 @@ class GuidedBackprop():
             hook.remove()
 
         return gradients_as_arr
+    
+    def get_strongest_filters(self, activation_img, top=1):
+    
+        activation_img = activation_img.detach().numpy()
+        # Find maximum activation for each filter for a given image
+        activation_img = np.nanmax(activation_img, axis=3)
+        activation_img = np.nanmax(activation_img, axis=2)
+
+        activation_img = activation_img.sum(0)
+
+        # Make activations 1-based indexing
+        #activation_img = np.insert(activation_img, 0, 0.0)
+
+        #  activation_image is now a vector of length equal to number of filters (plus one for one-based indexing)
+        #  each entry corresponds to the maximum/summed activation of each filter for a given image
+
+        top_filters = activation_img.argsort()[-top:]
+        return list(top_filters)
 
 def pipe_line(img, model, layer, block, method, filter_idx = None):
     

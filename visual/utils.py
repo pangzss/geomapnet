@@ -37,9 +37,11 @@ def get_patch_slice(img, max_index,kernel_size=50):
 
     
     H,W = img.shape[-2:]
-    h,w = max_index
+    h,w = max_index[:]
 
-    radius = (kernel_size - 1)/2
+    #radius_H = (RF[0] - 1)/2
+    #radius_W = (RF[1] - 1)//2
+    radius = ( kernel_size - 1 ) / 2
 
     left = w - radius
     right = w + radius + 1
@@ -157,3 +159,30 @@ def preprocess(img):
 def load_image(filename):
     img = Image.open(filename).convert('RGB')
     return img
+
+def bounding_box(grads_to_save,img_to_save,patch_slice):
+    grads_to_save[0,patch_slice[0],patch_slice[1].start] = grads_to_save.max()
+    grads_to_save[1:,patch_slice[0],patch_slice[1].start] = grads_to_save.min()
+
+    grads_to_save[0,patch_slice[0],patch_slice[1].stop] = grads_to_save.max()
+    grads_to_save[1:,patch_slice[0],patch_slice[1].stop] = grads_to_save.min()
+
+    grads_to_save[0,patch_slice[0].start,patch_slice[1]] = grads_to_save.max()
+    grads_to_save[1:,patch_slice[0].start,patch_slice[1]] = grads_to_save.min()
+
+    grads_to_save[0,patch_slice[0].stop,patch_slice[1]] = grads_to_save.max()
+    grads_to_save[1:,patch_slice[0].stop,patch_slice[1]] = grads_to_save.min()
+    
+    img_to_save[patch_slice[0],patch_slice[1].start,0] = 255
+    img_to_save[patch_slice[0],patch_slice[1].start,1:] = 0
+
+    img_to_save[patch_slice[0],patch_slice[1].stop,0] = 255
+    img_to_save[patch_slice[0],patch_slice[1].stop,1:] = 0
+
+    img_to_save[patch_slice[0].start,patch_slice[1],0] = 255
+    img_to_save[patch_slice[0].start,patch_slice[1],1:] = 0
+
+    img_to_save[patch_slice[0].stop,patch_slice[1],0] = 255
+    img_to_save[patch_slice[0].stop,patch_slice[1],1:] = 0
+
+    return grads_to_save,img_to_save
