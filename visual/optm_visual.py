@@ -61,6 +61,7 @@ class optm_visual():
         # [0] to get rid of the first channel (1,3,224,224)
         self.hook.remove()
 
+        visual_image = recreate_image(visual_image)
         return visual_image
 
 def preprocess_image(pil_im, resize_im=True):
@@ -130,11 +131,9 @@ if __name__ == '__main__':
 
     visual_image = optm_visual(model,layer,block, filter_idx).generate_optm_visual()
 
-    visual_image = recreate_image(visual_image)
-
     folder = './figs/optm/style_'+str(style)
     if not os.path.exists(folder):
             os.makedirs(folder)
-    name = 'layer_'+str(layer)+'block_'+str(block)+'filter_'+str(filter_idx)+'.png'
+    name = 'layer_'+str(layer)+'_block_'+str(block)+'_filter_'+str(filter_idx)+'.png'
     path = osp.join(folder,name)
     save_image(visual_image,path)

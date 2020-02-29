@@ -5,10 +5,11 @@ import os.path as osp
 import torch
 
 import numpy as np
-
+import matplotlib.pyplot as plt
 from utils import *
-from filter_extractor import generate_strong_filters
+from filter_extractor_random import generate_strong_filters
 from guidedbp_vanilla import pipe_line
+from optm_visual import optm_visual
 import configparser
 import argparse
 import pickle
@@ -25,7 +26,8 @@ parser.add_argument('--styles',type=int,choices=(0,4,8,16))
 #parser.add_argument('--layer', type=int, choices=(1,2,3,4), help= "choose layer to visualize when mode is 'indivisual' ")
 #parser.add_argument('--block', type=int, help= "choose block to visualize when mode is 'individual'. Valid values: [0~2,0~3,0~5,0~2] (layer1 - layer4) ")
 parser.add_argument('--method',type=str, choices=('guidedbp','vanilla'), help='methods for visualization')
-parser.add_argument('--mode',type=str, choices=('maxima_full','maxima_patches','same_images','image_directories_dict','one_image_for_all_blocks')
+parser.add_argument('--mode',type=str, choices=('maxima_full','maxima_patches','same_images',
+                                        'image_directories_dict','one_image_for_all_blocks','optm_visual','plot_activation')
                                     , help='To show the full image or patches containing the maxima')
 parser.add_argument('--sample_test',type=int
                                     , help='which sample image to choose when in mode one_image_for_all_blocks ')
@@ -67,9 +69,12 @@ with open(img_dirs_path, 'rb') as fb:
 
 # start guided bp/ vanilla
 num_blocks = [3,4,6,3]
+img_filter_indices_dict = {}
 if 'maxima' in args.mode:
     for layer in range(1,4+1):
+        img_filter_indices_dict['layer'+str(layer)] = {}
         for block in range(0,num_blocks[layer-1]):
+            img_filter_indices_dict['layer'+str(layer)]['block'+str(block)] = {}
             # In AachenDay, there are 349 sample images. Every one of them
             # has a strongest filter in every block. Every strongest filter has its
             # own index among all the filters owned by the block.  Here the code aims to
@@ -79,22 +84,24 @@ if 'maxima' in args.mode:
             topK = 8
             # arrange filter indices in a descending order based on their activation values
             maxima_values = filterMaxima['layer'+str(layer)]['block'+str(block)][0]
-            maxima_filter_idces = filterMaxima['layer'+str(layer)]['block'+str(block)][1]
+            img_filter_indices = filterMaxima['layer'+str(layer)]['block'+str(block)][1]
 
-            maxima_img_h2l = np.argsort(maxima_values)[::-1][:topK]
-            maxima_img_filter_idces = maxima_filter_idces[maxima_img_h2l]
+            maxima_h2l = np.argsort(maxima_values)[::-1][:topK]
+            maxima_img_idces = img_filter_indices[maxima_h2l][:,0]
+            maxima_filter_idces = img_filter_indices[maxima_h2l][:,1]
+            img_filter_indices_dict['layer'+str(layer)]['block'+str(block)] = img_filter_indices[maxima_h2l]
             # select the images that activate those strong filters.
             imgs_selected = []
-            for idx in maxima_img_h2l:
+            for idx in maxima_img_idces:
                     
-                imgs_selected.append(img_dirs[idx]) 
+                imgs_selected.append(img_dirs[int(idx)]) 
             #######################################
         
             for i,img_dir in enumerate(imgs_selected):
 
                 dataset_path = osp.join('data', args.dataset)
                 img_path = osp.join(dataset_path,img_dir)
-                filter_idx = maxima_img_filter_idces[i]
+                filter_idx = int(maxima_filter_idces[i])
 
                     # load an image
                 img = load_image(img_path)
@@ -102,6 +109,8 @@ if 'maxima' in args.mode:
                 input_img = preprocess(img)
 
                 img = np.asarray(img.resize((224, 224)))
+
+                mode_folder = osp.join(root_folder,args.mode)
 
                 guided_grads = pipe_line(input_img, model, layer, block, args.method, filter_idx = filter_idx)
                 if args.mode == 'maxima_patches' and args.method == 'guidedbp':
@@ -130,11 +139,10 @@ if 'maxima' in args.mode:
                     #center = [(np.max(idx)-np.min(idx))//2+np.min(idx) for idx in idx_nonzeros]
                     #RF = [np.max(idx)-np.min(idx)+1 for idx in idx_nonzeros] # receptive field
                     #patch_slice = get_patch_slice(guided_grads,center, RF)
-                    if layer != 4:
-                        grads_to_save,img_to_save = bounding_box(guided_grads.copy(),img.copy(),patch_slice)
-                    else:
-                        grads_to_save = guided_grads
-                        img_to_save = img
+                 
+                    grads_to_save,img_to_save = bounding_box(guided_grads.copy(),img.copy(),patch_slice)
+                   
+                  
                 file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_top'+str(i+1)
                 to_folder = osp.join(mode_folder, args.method, 'style_'+str(args.styles))
                     # Save colored gradients
@@ -152,7 +160,10 @@ if 'maxima' in args.mode:
                 #pos_sal, _ = get_positive_negative_saliency(guided_grads)
                 
 
-                print('Guided backprop completed. Layer {}, block {}, filter No.{}, top {}'.format(layer, block, filter_idx,i+1))
+                print('Backprop completed. Layer {}, block {}, filter No.{}, top {}'.format(layer, block, filter_idx,i+1))
+    with open(to_folder+'_img_filter_indices_dict.txt','wb') as fp:
+        pickle.dump(img_filter_indices_dict,fp)
+    
 elif args.mode == 'same_images':# and args.styles != 0:
     # this mode uses the top k images obtained from the model with no style for 
     # models with nonzero styles. For the sake of comparison based a same set of images.
@@ -216,7 +227,7 @@ elif args.mode == 'same_images':# and args.styles != 0:
         
                 save_gradient_images(grads_to_save, to_folder, file_name_to_export)
                 save_original_images(img_to_save, to_folder, file_name_to_export+'ori')
-                print('Guided backprop completed. Layer {}, block {}, top {}'.format(layer, block, i+1))
+                print('Backprop completed. Layer {}, block {}, top {}'.format(layer, block, i+1))
 
 elif args.mode == 'image_directories_dict':
     # this mode uses the top k images obtained from the model with no style for 
@@ -302,3 +313,66 @@ elif args.mode == 'one_image_for_all_blocks':
             save_gradient_images(grads_to_save, to_folder, file_name_to_export)
             save_original_images(img_to_save, to_folder, file_name_to_export+'ori')
             print('Guided backprop completed. Sample test {}, Layer {}, block {}'.format(args.sample_test,layer, block))
+elif args.mode == 'optm_visual':
+    pass
+elif args.mode == 'plot_activation':
+
+    from activation_extractor import conv_forward
+    from math import sqrt, ceil
+    def vis_grid(feat_map): # feat_map: (C, H, W, 1)
+        (C, H, W, B) = feat_map.shape
+        cnt = int(ceil(sqrt(C)))
+        G = np.ones((cnt * H + cnt, cnt * W + cnt, B), feat_map.dtype)  # additional cnt for black cutting-lines
+        G *= np.min(feat_map)
+
+        n = 0
+        for row in range(cnt):
+            for col in range(cnt):
+                if n < C:
+                    # additional cnt for black cutting-lines
+                    G[row * H + row : (row + 1) * H + row, col * W + col : (col + 1) * W + col, :] = feat_map[n, :, :, :]
+                    n += 1
+
+        # normalize to [0, 1]
+        G = (G - G.min()) / (G.max() - G.min())
+
+        return G
+
+    # visualize a layer (a feature map represented by a grid)
+    def vis_layer(feat_map_grid):
+        plt.clf()   # clear figure
+        fig,ax = plt.subplots(ncols=1)
+        ax.imshow(feat_map_grid[:, :, 0], cmap = 'gray')   # feat_map_grid: (ceil(sqrt(C)) * H, ceil(sqrt(C)) * W, 1)
+        plt.axis('off')
+        return fig
+    
+    mode_folder = osp.join(root_folder,args.mode)
+    dataset_path = osp.join('data', args.dataset)
+
+    with open(osp.join(root_folder,'image_directories_dict/img_dirs_dict_style_0.txt'), 'rb') as fb:
+        img_dirs_dict = pickle.load(fb)
+    img_dir = img_dirs_dict['layer3']['block2'][4]
+    img_path = osp.join(dataset_path,img_dir)
+    # load an image
+    img = load_image(img_path)
+    # preprocess an image, return a pytorch variable
+    input_img = preprocess(img)
+    img = np.asarray(img.resize((224, 224)))
+    
+    _,activations = conv_forward().get_conv_maps(model,input_img)
+    for layer in range(1,4+1):
+        for block in range(0,num_blocks[layer-1]):
+    
+            actv_map = activations['layer'+str(layer)]['block'+str(block)]
+            actv_map_grid = vis_grid(actv_map.data.numpy().transpose(1, 2, 3, 0))
+            fig = vis_layer(actv_map_grid)
+
+            folder = osp.join(mode_folder,'style_'+str(args.styles))
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            fig.savefig(osp.join(folder,'layer_'+str(layer)+'_block_'+str(block)+'.png'))
+    #fig, ax= plt.subplots(ncols=1)
+    #ax.imshow(actv_map[0,78].data.numpy(),cmap='gray')
+    #plt.show()
+
+    

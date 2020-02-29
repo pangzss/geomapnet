@@ -10,7 +10,7 @@ class conv_forward():
         def hook(module,input,output):
             if 'maxpool' in layer:
                 self.activations[layer]['actvation']= output[0]
-                self.activations[layer]['pool_indices']= output[1]
+           #     self.activations[layer]['pool_indices']= output[1]
 
             else:
                 self.activations[layer]['block'+str(blk_index)]= output
