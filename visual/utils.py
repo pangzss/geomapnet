@@ -56,6 +56,27 @@ def get_patch_slice(img, max_index,kernel_size=50):
                     int(down - (down-H+1)*(down>=H) - up*(up<0)))
 
     return (h_slice, w_slice)
+
+    def patches_grid(patches): # feat_map: (C, H, W, 1)
+        # input patch : 9x3x50x50 or 9x3x100x100
+        patches = patches.transpose(2,3,1)
+        (B,H,W,C) = patches.shape
+        cnt = 3
+        G = np.zeros((cnt * H + cnt, cnt * W + cnt, C), patches.dtype)  # additional cnt for black cutting-lines
+        
+
+        n = 0
+        for row in range(cnt):
+            for col in range(cnt):
+                if n < B:
+                    # additional cnt for black cutting-lines
+                    G[row * H + row : (row + 1) * H + row, col * W + col : (col + 1) * W + col, :] = patches[n, :, :, :]
+                    n += 1
+
+        # normalize to [0, 1]
+        G = (G - G.min()) / (G.max() - G.min())
+
+        return G
 # process images
 def convert_to_grayscale(im_as_arr):
     """
@@ -186,3 +207,20 @@ def bounding_box(grads_to_save,img_to_save,patch_slice):
     img_to_save[patch_slice[0].stop,patch_slice[1],1:] = 0
 
     return grads_to_save,img_to_save
+
+def norm_std(img):
+    """ Normalization of conv2d filters for visualization
+    https://github.com/jacobgil/keras-filter-visualization/blob/master/utils.py
+    Args:
+        filter_in: [size_x, size_y, n_channel]
+    """
+    x = img
+    x -= x.mean()
+    x /= (x.std() + 1e-5)
+    # make most of the value between [-0.5, 0.5]
+    x *= 0.1
+    # move to [0, 1]
+    x += 0.5
+    x *= 255
+    x = np.clip(x, 0, 255).astype('uint8')
+    return x

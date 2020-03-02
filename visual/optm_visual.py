@@ -40,16 +40,18 @@ class optm_visual():
    
     def generate_optm_visual(self):
          # Generate a random image
-        random_image = np.uint8(np.random.uniform(150, 180, (224, 224, 3)))
+        random_image = np.uint8(np.random.normal(150, 180, (224, 224, 3)))
         visual_image = preprocess_image(random_image, False)
         visual_image.requires_grad = True
         optimizer = Adam([visual_image], lr=0.1, weight_decay=1e-6)
-        for i in range(1,101):
+        for i in range(1,201):
             optimizer.zero_grad()
             x = visual_image
             out = self.model(x)
 
             loss = -torch.mean(self.conv_output)
+            if loss == 0:
+                loss += 1
 
             if i % 5 == 0:
                 print('Iteration:', str(i), 'Loss:', "{0:.2f}".format(loss.data.numpy()))
@@ -118,17 +120,17 @@ def recreate_image(im_as_var):
 
 
 if __name__ == '__main__':
-    layer = 3
-    block = 1
-    filter_idx = 142
-    style = 4
+    layer = 4
+    block = 0
+    filter_idx = 29
+    style = 0
     weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
                 4: 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
                 8:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
                 16: 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar'}       
     weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[style])
     model = get_model(weights_dir)
-
+    #print(model._modules['layer4'][1]._modules['conv2'].weight.data[0,filter_idx])
     visual_image = optm_visual(model,layer,block, filter_idx).generate_optm_visual()
 
     folder = './figs/optm/style_'+str(style)

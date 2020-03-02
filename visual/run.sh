@@ -1,5 +1,5 @@
 python visual_pipeline.py --dataset AachenDay \
---styles 4 \
+--styles 0 \
 --method guidedbp \
---mode  maxima_full \
+--mode  patch_grid \
 --sample_test 2

@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from utils import *
 from filter_extractor_random import generate_strong_filters
+from skimage.transform import resize
+from skimage.exposure import match_histograms
 from guidedbp_vanilla import pipe_line
 from optm_visual import optm_visual
 import configparser
@@ -27,7 +29,7 @@ parser.add_argument('--styles',type=int,choices=(0,4,8,16))
 #parser.add_argument('--block', type=int, help= "choose block to visualize when mode is 'individual'. Valid values: [0~2,0~3,0~5,0~2] (layer1 - layer4) ")
 parser.add_argument('--method',type=str, choices=('guidedbp','vanilla'), help='methods for visualization')
 parser.add_argument('--mode',type=str, choices=('maxima_full','maxima_patches','same_images',
-                                        'image_directories_dict','one_image_for_all_blocks','optm_visual','plot_activation')
+                                        'image_directories_dict','one_image_for_all_blocks','optm_visual','plot_activation','patch_grid')
                                     , help='To show the full image or patches containing the maxima')
 parser.add_argument('--sample_test',type=int
                                     , help='which sample image to choose when in mode one_image_for_all_blocks ')
@@ -56,8 +58,9 @@ model.eval()
 # define root folder
 root_folder = osp.join('./figs',args.dataset+'_files')
 # strong filters
-filter_maxima_path = osp.join(root_folder,'filterMaxima_'+'style'+str(args.styles)+'.pt')
-img_dirs_path = osp.join(root_folder, 'img_dirs_'+'style'+str(args.styles)+'.txt')
+criterion = 'sum'
+filter_maxima_path = osp.join(root_folder,'filter_indices_'+criterion,'filterMaxima_'+'style'+str(args.styles)+'.pt')
+img_dirs_path = osp.join(root_folder, 'filter_indices_'+criterion, 'img_dirs_'+'style'+str(args.styles)+'.txt')
 if not os.path.exists(filter_maxima_path):
     # generate files of strong filters
     generate_strong_filters(model,args.dataset,filter_maxima_path,img_dirs_path)
@@ -117,15 +120,19 @@ if 'maxima' in args.mode:
                     # define mode folder
                     mode_folder = osp.join(root_folder,args.mode)
 
-                    if layer != 4 :
-                        max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
-                        max_index = np.unravel_index(max_index_flat,(224,224))
-                        patch_slice = get_patch_slice(guided_grads,max_index)
-                        grads_to_save = guided_grads[:,patch_slice[0],patch_slice[1]]
-                        img_to_save = img[patch_slice[0],patch_slice[1],:]
-                    else:
-                        grads_to_save = guided_grads
-                        img_to_save = img
+                    #if layer != 4 :
+                    kernel_size = 50
+                    if layer >= 3:
+                        kernel_size = 100
+
+                    max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
+                    max_index = np.unravel_index(max_index_flat,(224,224))
+                    patch_slice = get_patch_slice(guided_grads,max_index,kernel_size=kernel_size)
+                    grads_to_save = guided_grads[:,patch_slice[0],patch_slice[1]]
+                    img_to_save = img[patch_slice[0],patch_slice[1],:]
+                    #else:
+                     #   grads_to_save = guided_grads
+                     #   img_to_save = img
 
                 elif args.mode == 'maxima_full' and args.method == 'guidedbp':
                     mode_folder = osp.join(root_folder,args.mode)
@@ -349,14 +356,19 @@ elif args.mode == 'plot_activation':
     mode_folder = osp.join(root_folder,args.mode)
     dataset_path = osp.join('data', args.dataset)
 
-    with open(osp.join(root_folder,'image_directories_dict/img_dirs_dict_style_0.txt'), 'rb') as fb:
-        img_dirs_dict = pickle.load(fb)
-    img_dir = img_dirs_dict['layer3']['block2'][4]
-    img_path = osp.join(dataset_path,img_dir)
+    #with open(osp.join(root_folder,'image_directories_dict/img_dirs_dict_style_0.txt'), 'rb') as fb:
+     #   img_dirs_dict = pickle.load(fb)
+    #img_dir = img_dirs_dict['layer3']['block2'][4]
+    #img_path = osp.join(dataset_path,img_dir)
+    img_path = './data/sky_patch_1.png'
     # load an image
     img = load_image(img_path)
     # preprocess an image, return a pytorch variable
+    
+    
     input_img = preprocess(img)
+    #input_img[:,:,:,:] = 0
+    #input_img[:,2,:50,:50] = 1
     img = np.asarray(img.resize((224, 224)))
     
     _,activations = conv_forward().get_conv_maps(model,input_img)
@@ -372,7 +384,155 @@ elif args.mode == 'plot_activation':
                 os.makedirs(folder)
             fig.savefig(osp.join(folder,'layer_'+str(layer)+'_block_'+str(block)+'.png'))
     #fig, ax= plt.subplots(ncols=1)
-    #ax.imshow(actv_map[0,78].data.numpy(),cmap='gray')
+    #ax.imshow(activations['layer4']['block2'][0,401].data.numpy(),cmap='gray')
+    #ax.set_title('Filter no.401')
+    #plt.axis('off')
+    #plt.show()
+elif args.mode == 'patch_grid':
+    mode_folder = osp.join(root_folder,args.mode)
+
+    def patches_grid(patches): # feat_map: (C, H, W, 1)
+        # input patch : 9x3x50x50 or 9x3x100x100
+        patches = patches.transpose(0,2,3,1)
+        (B,H,W,C) = patches.shape
+        cnt = 3
+        G = np.ones((cnt * H + cnt+5, cnt * W + cnt+5 , C), patches.dtype)  # additional cnt for black cutting-lines
+        G *= np.min(patches)
+
+        n = 0
+        for row in range(cnt):
+            for col in range(cnt):
+                if n < B:
+                    # additional cnt for black cutting-lines
+                    G[row * H + row : (row + 1) * H + row, col * W + col : (col + 1) * W + col, :] = patches[n, :, :, :]
+                    n += 1
+
+        # normalize to [0, 1]
+        G = G - G.min()
+        if G.max() != 0 :
+            G /= G.max() 
+
+        return G
+    
+
+    # strong filters
+    criterion = 'sum'
+    filter_maxima_path = osp.join(root_folder,'filter_indices_'+criterion,'filterMaxima_list_'+'style'+str(args.styles)+'.pt')
+    img_dirs_path = osp.join(root_folder,'filter_indices_'+criterion, 'img_dirs_'+'style'+str(args.styles)+'.txt')
+    iterations = 4
+    if not os.path.exists(filter_maxima_path):
+        # generate files of strong filters
+        generate_strong_filters(model,args.dataset,filter_maxima_path,img_dirs_path,iterations=iterations,criterion=criterion)
+    # load strong filter files
+    filterMaxima = torch.load(filter_maxima_path)
+    with open(img_dirs_path, 'rb') as fb:
+        img_dirs = pickle.load(fb)
+
+    # reference for histogram matching
+    #temp = np.asarray(load_image(osp.join(mode_folder,'temp.png'))).transpose(2,0,1)
+    
+    G_grads_all = []
+    G_img_all = []
+    for layer in range(2,3):
+        for block in range(0,num_blocks[layer-1]):
+            # top k filters to visualize
+            topK = 9
+
+            G_grads = None
+            img_grads = None
+            for i_sample in range(iterations):
+
+                # arrange filter indices in a descending order based on their activation values
+                maxima_values = filterMaxima[i_sample]['layer'+str(layer)]['block'+str(block)][0]
+                img_filter_indices = filterMaxima[i_sample]['layer'+str(layer)]['block'+str(block)][1]
+
+                maxima_h2l = np.argsort(maxima_values)[::-1][:topK]
+    
+                maxima_img_idces = img_filter_indices[maxima_h2l][:,0]
+                maxima_filter_idces = img_filter_indices[maxima_h2l][:,1]
+
+                # select the images that activate those strong filters.
+                imgs_selected = []
+                for idx in maxima_img_idces:
+                        
+                    imgs_selected.append(img_dirs[int(idx)]) 
+                #######################################
+                grads_patches = np.zeros((topK,3,50,50))
+                img_patches = np.zeros((topK,3,50,50))
+                for i,img_dir in enumerate(imgs_selected):
+                   # print('top '+str(i+1),maxima_values[maxima_h2l][i])
+
+                    dataset_path = osp.join('data', args.dataset)
+                    img_path = osp.join(dataset_path,img_dir)
+                    filter_idx = int(maxima_filter_idces[i])
+                
+                    # load an image
+                    img = load_image(img_path)
+                    # preprocess an image, return a pytorch variable
+                    input_img = preprocess(img)
+
+                    img = np.asarray(img.resize((224, 224)))
+
+                    guided_grads = pipe_line(input_img, model, layer, block, args.method, filter_idx = filter_idx)
+
+
+                    kernel_size = 50
+                    if layer >= 3:
+                        kernel_size = 100
+
+                    max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
+                    max_index = np.unravel_index(max_index_flat,(224,224))
+                    patch_slice = get_patch_slice(guided_grads,max_index,kernel_size=kernel_size)
+                    grads_patch = guided_grads[:,patch_slice[0],patch_slice[1]]
+                    grads_patch = norm_std(grads_patch)
+                    grads_patch = grads_patch - grads_patch.min()
+                    #if grads_patch.max() != 0:
+                    #    grads_patch /= grads_patch.max() 
+                    img_patch = img[patch_slice[0],patch_slice[1],:].transpose(2,0,1)
+                    
+                    if grads_patch.shape[-1] != 50:
+                
+                        grads_patch = resize(grads_patch,(3,50,50))
+                        img_patch = resize(img_patch, (3,50,50))
+
+                    grads_patches[i] = grads_patch
+                    img_patches[i] = img_patch
+                if i_sample == 0:
+                    G_grads = patches_grid(grads_patches)
+                    G_img = patches_grid(img_patches)
+                else:
+                    G_grads = np.concatenate((G_grads,patches_grid(grads_patches)),axis = 1)
+                    G_img = np.concatenate((G_img,patches_grid(img_patches)),axis = 1)
+                print('Processing Layer {}, Block {}, sample {}'.format(layer,block,i_sample))
+
+            G_grads_all.append(G_grads.copy())
+            G_img_all.append(G_img.copy())
+
+            
+        
+    for idx in range(len(G_grads_all)):
+        if idx == 0:
+            G_grads_final = G_grads_all[idx]
+            G_img_final = G_img_all[idx]
+        else:
+            G_grads_final = np.concatenate((G_grads_final,G_grads_all[idx]),axis=0)
+            G_img_final = np.concatenate((G_img_final,G_img_all[idx]),axis=0)
+    # normalize to [0, 1]
+    #G_grads_final = (G_grads_final - G_grads_final.min()) / G_grads_final.max() 
+    
+
+    path = osp.join(mode_folder,criterion, 'style_'+str(args.styles))
+    if not os.path.exists(path):
+            os.makedirs(path)
+    save_original_images(G_grads_final, path, 'layer'+str(layer)+'_grads')
+    save_original_images(G_img_final, path, 'layer'+str(layer)+'_imgs')
+    #fig1,ax1 = plt.subplots(ncols=1)
+    #fig2,ax2 = plt.subplots(ncols=1)
+    #ax1.imshow(G_grads_final) 
+    #ax1.set_axis_off()
+    #ax2.imshow(G_img_final)   
+    #ax2.set_axis_off()
     #plt.show()
 
-    
+
+            
