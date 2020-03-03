@@ -58,7 +58,7 @@ model.eval()
 # define root folder
 root_folder = osp.join('./figs',args.dataset+'_files')
 # strong filters
-criterion = 'sum'
+criterion = 'max'
 filter_maxima_path = osp.join(root_folder,'filter_indices_'+criterion,'filterMaxima_'+'style'+str(args.styles)+'.pt')
 img_dirs_path = osp.join(root_folder, 'filter_indices_'+criterion, 'img_dirs_'+'style'+str(args.styles)+'.txt')
 if not os.path.exists(filter_maxima_path):
@@ -120,26 +120,35 @@ if 'maxima' in args.mode:
                     # define mode folder
                     mode_folder = osp.join(root_folder,args.mode)
 
-                    #if layer != 4 :
-                    kernel_size = 50
-                    if layer >= 3:
-                        kernel_size = 100
-
-                    max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
-                    max_index = np.unravel_index(max_index_flat,(224,224))
-                    patch_slice = get_patch_slice(guided_grads,max_index,kernel_size=kernel_size)
-                    grads_to_save = guided_grads[:,patch_slice[0],patch_slice[1]]
-                    img_to_save = img[patch_slice[0],patch_slice[1],:]
-                    #else:
-                     #   grads_to_save = guided_grads
-                     #   img_to_save = img
+                    if layer != 4 :
+                        kernel_size = 50
+                        if layer == 3:
+                            kernel_size = 100
+                        max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
+                        max_index = np.unravel_index(max_index_flat,(224,224))
+                        patch_slice = get_patch_slice(guided_grads,max_index,kernel_size=kernel_size)
+                        grads_to_save = guided_grads[:,patch_slice[0],patch_slice[1]]
+                        img_to_save = img[patch_slice[0],patch_slice[1],:]
+                    else:
+                        grads_to_save = guided_grads
+                        img_to_save = img
 
                 elif args.mode == 'maxima_full' and args.method == 'guidedbp':
                     mode_folder = osp.join(root_folder,args.mode)
 
-                    max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
-                    max_index = np.unravel_index(max_index_flat,(224,224))
-                    patch_slice = get_patch_slice(guided_grads,max_index)
+                    if layer != 4: 
+                        kernel_size = 50
+                        if layer == 3:
+                            kernel_size = 100
+                
+                        max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
+                        max_index = np.unravel_index(max_index_flat,(224,224))
+                        patch_slice = get_patch_slice(guided_grads.copy(),max_index,kernel_size=kernel_size)
+                        grads_to_save,img_to_save = bounding_box(norm_std(guided_grads.copy()),img.copy(),patch_slice)
+                    else:
+                        grads_to_save = norm_std(guided_grads)
+                        img_to_save = img
+
                     
                     #idx_nonzeros=np.where(np.sum(guided_grads,axis=0)!=0)
                     
@@ -147,9 +156,9 @@ if 'maxima' in args.mode:
                     #RF = [np.max(idx)-np.min(idx)+1 for idx in idx_nonzeros] # receptive field
                     #patch_slice = get_patch_slice(guided_grads,center, RF)
                  
-                    grads_to_save,img_to_save = bounding_box(guided_grads.copy(),img.copy(),patch_slice)
+                    
                    
-                  
+                
                 file_name_to_export = 'layer_'+str(layer)+'_block_'+str(block)+'_top'+str(i+1)
                 to_folder = osp.join(mode_folder, args.method, 'style_'+str(args.styles))
                     # Save colored gradients
@@ -416,11 +425,12 @@ elif args.mode == 'patch_grid':
     
 
     # strong filters
-    criterion = 'sum'
+    criterion = 'max'
     filter_maxima_path = osp.join(root_folder,'filter_indices_'+criterion,'filterMaxima_list_'+'style'+str(args.styles)+'.pt')
     img_dirs_path = osp.join(root_folder,'filter_indices_'+criterion, 'img_dirs_'+'style'+str(args.styles)+'.txt')
     iterations = 4
     if not os.path.exists(filter_maxima_path):
+        print('reach')
         # generate files of strong filters
         generate_strong_filters(model,args.dataset,filter_maxima_path,img_dirs_path,iterations=iterations,criterion=criterion)
     # load strong filter files
@@ -431,9 +441,10 @@ elif args.mode == 'patch_grid':
     # reference for histogram matching
     #temp = np.asarray(load_image(osp.join(mode_folder,'temp.png'))).transpose(2,0,1)
     
-    G_grads_all = []
-    G_img_all = []
-    for layer in range(2,3):
+    
+    for layer in range(4,5):
+        G_grads_all = []
+        G_img_all = []
         for block in range(0,num_blocks[layer-1]):
             # top k filters to visualize
             topK = 9
@@ -457,8 +468,15 @@ elif args.mode == 'patch_grid':
                         
                     imgs_selected.append(img_dirs[int(idx)]) 
                 #######################################
-                grads_patches = np.zeros((topK,3,50,50))
-                img_patches = np.zeros((topK,3,50,50))
+                if layer < 3:
+                    grads_patches = np.zeros((topK,3,50,50))
+                    img_patches = np.zeros((topK,3,50,50))
+                elif layer == 3:
+                    grads_patches = np.zeros((topK,3,100,100))
+                    img_patches = np.zeros((topK,3,100,100))
+                elif layer == 4:
+                    grads_patches = np.zeros((topK,3,224,224))
+                    img_patches = np.zeros((topK,3,224,224))
                 for i,img_dir in enumerate(imgs_selected):
                    # print('top '+str(i+1),maxima_values[maxima_h2l][i])
 
@@ -474,26 +492,36 @@ elif args.mode == 'patch_grid':
                     img = np.asarray(img.resize((224, 224)))
 
                     guided_grads = pipe_line(input_img, model, layer, block, args.method, filter_idx = filter_idx)
-
-
+                    guided_grads = norm_std(guided_grads)
+                  
                     kernel_size = 50
-                    if layer >= 3:
-                        kernel_size = 100
-
-                    max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
-                    max_index = np.unravel_index(max_index_flat,(224,224))
-                    patch_slice = get_patch_slice(guided_grads,max_index,kernel_size=kernel_size)
-                    grads_patch = guided_grads[:,patch_slice[0],patch_slice[1]]
-                    grads_patch = norm_std(grads_patch)
-                    grads_patch = grads_patch - grads_patch.min()
+                    if layer != 4:
+                        if layer == 3:
+                            kernel_size = 100
+                        
+                        max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
+                        max_index = np.unravel_index(max_index_flat,(224,224))
+                        patch_slice = get_patch_slice(guided_grads,max_index,kernel_size=kernel_size)
+                        grads_patch = guided_grads[:,patch_slice[0],patch_slice[1]].copy()
+                        img_patch = img[patch_slice[0],patch_slice[1],:].transpose(2,0,1)
+                    elif layer == 4:
+                        grads_patch = guided_grads.copy()
+                        img_patch = img.transpose(2,0,1)
+                    #grads_patch = norm_std(grads_patch)
+                
+                    #grads_patch = grads_patch - grads_patch.min()
                     #if grads_patch.max() != 0:
                     #    grads_patch /= grads_patch.max() 
-                    img_patch = img[patch_slice[0],patch_slice[1],:].transpose(2,0,1)
                     
-                    if grads_patch.shape[-1] != 50:
+                    
+
+                    #if grads_patch.shape[-1] != 50:
                 
-                        grads_patch = resize(grads_patch,(3,50,50))
-                        img_patch = resize(img_patch, (3,50,50))
+                 #       grads_patch = norm_std(resize(grads_patch,(3,50,50)))
+                  #      img_patch = resize(img_patch, (3,50,50))
+                    #if layer == 1 and block == 0:
+                    #    grads_patch = norm_std(resize(guided_grads,(3,50,50)))
+                    #    img_patch = resize(img.transpose(2,0,1),(3,50,50))
 
                     grads_patches[i] = grads_patch
                     img_patches[i] = img_patch
@@ -509,23 +537,26 @@ elif args.mode == 'patch_grid':
             G_img_all.append(G_img.copy())
 
             
+            
+        for idx in range(len(G_grads_all)):
+            if idx == 0:
+                G_grads_final = G_grads_all[idx]
+                G_img_final = G_img_all[idx]
+            else:
+                G_grads_final = np.concatenate((G_grads_final,G_grads_all[idx]),axis=0)
+                G_img_final = np.concatenate((G_img_final,G_img_all[idx]),axis=0)
         
-    for idx in range(len(G_grads_all)):
-        if idx == 0:
-            G_grads_final = G_grads_all[idx]
-            G_img_final = G_img_all[idx]
-        else:
-            G_grads_final = np.concatenate((G_grads_final,G_grads_all[idx]),axis=0)
-            G_img_final = np.concatenate((G_img_final,G_img_all[idx]),axis=0)
+  
+        
     # normalize to [0, 1]
-    #G_grads_final = (G_grads_final - G_grads_final.min()) / G_grads_final.max() 
+     #   G_grads_final = (G_grads_final - G_grads_final.min()) / (G_grads_final.max() - G_grads_final.min())
     
 
-    path = osp.join(mode_folder,criterion, 'style_'+str(args.styles))
-    if not os.path.exists(path):
-            os.makedirs(path)
-    save_original_images(G_grads_final, path, 'layer'+str(layer)+'_grads')
-    save_original_images(G_img_final, path, 'layer'+str(layer)+'_imgs')
+        path = osp.join(mode_folder,criterion, 'style_'+str(args.styles))
+        if not os.path.exists(path):
+                os.makedirs(path)
+        save_original_images(G_grads_final, path, 'layer'+str(layer)+'_grads')
+        save_original_images(G_img_final, path, 'layer'+str(layer)+'_imgs')
     #fig1,ax1 = plt.subplots(ncols=1)
     #fig2,ax2 = plt.subplots(ncols=1)
     #ax1.imshow(G_grads_final) 

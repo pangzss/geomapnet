@@ -118,9 +118,9 @@ def save_gradient_images(gradient, path, file_name):
     if not os.path.exists(path):
             os.makedirs(path)
     # Normalize
-    gradient = gradient - gradient.min()
-    if gradient.max() != 0:
-        gradient /= gradient.max()
+    #gradient = gradient - gradient.min()
+    #if gradient.max() != 0:
+    #    gradient /= gradient.max()
     # Save image
     path_to_file = os.path.join(path, file_name + '.png')
     save_image(gradient, path_to_file)
@@ -218,7 +218,7 @@ def norm_std(img):
     x -= x.mean()
     x /= (x.std() + 1e-5)
     # make most of the value between [-0.5, 0.5]
-    x *= 0.1
+    x *= 0.075
     # move to [0, 1]
     x += 0.5
     x *= 255

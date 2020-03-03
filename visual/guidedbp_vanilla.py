@@ -111,6 +111,7 @@ class GuidedBackprop():
         
         # Zero gradients
         self.model.zero_grad()
+    
         loss = torch.max(self.conv_output)
         loss.backward()
 

@@ -28,7 +28,7 @@ class StrongFilterExtractor():
             conv_output = np.reshape(conv_output,(-1,conv_output.shape[2],conv_output.shape[3]))
             featmap_tag = np.reshape(featmap_tag,(-1,2))
 
-            rand_indices = np.random.permutation(conv_output.shape[0])[:conv_output.shape[0]//10]
+            rand_indices = np.random.permutation(conv_output.shape[0])[:conv_output.shape[0]//100]
 
             conv_output_sub = conv_output[rand_indices]
             featmap_tag_sub = featmap_tag[rand_indices]
@@ -37,7 +37,7 @@ class StrongFilterExtractor():
             elif self.criterion == 'sum':
                 #alpha = 0.7
                 #strong_activations = (1-alpha)*np.max(conv_output_sub,axis=(1,2))+alpha*np.mean(conv_output_sub,axis=(1,2))
-                strong_activations = np.median(conv_output_sub,axis=(1,2))
+                strong_activations = np.sum(conv_output_sub,axis=(1,2))
             else:
                 KeyError
             
