@@ -40,7 +40,7 @@ class SevenScenes(data.Dataset):
       self.target_transform = target_transform
       self.skip_images = skip_images
       np.random.seed(seed)
-
+   
       # directories
       base_dir = osp.join(osp.expanduser(data_path), scene)
       data_dir = osp.join('..', 'data', '7Scenes', scene)
@@ -169,8 +169,8 @@ def main():
   from common.vis_utils import show_batch, show_stereo_batch
   from torchvision.utils import make_grid
   import torchvision.transforms as transforms
-  seq = 'chess'
-  mode = 2
+  seq = 'heads'
+  mode = 0
   num_workers = 6
   transform = transforms.Compose([
     transforms.Scale(256),
@@ -192,7 +192,8 @@ def main():
   for batch in data_loader:
     print('Minibatch {:d}'.format(batch_count))
     if mode < 2:
-      show_batch(make_grid(batch[0], nrow=1, padding=25, normalize=True))
+      pass
+     # show_batch(make_grid(batch[0], nrow=1, padding=25, normalize=True))
     elif mode == 2:
       lb = make_grid(batch[0][0], nrow=1, padding=25, normalize=True)
       rb = make_grid(batch[0][1], nrow=1, padding=25, normalize=True)

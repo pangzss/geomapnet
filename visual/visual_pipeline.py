@@ -10,23 +10,21 @@ from utils import *
 from filter_extractor_random import generate_strong_filters
 from skimage.transform import resize
 from skimage.exposure import match_histograms
+from skimage.filters import gaussian
 from guidedbp_vanilla import pipe_line
+from guidedbp_layer import pipe_line as pipeline_layer
 from optm_visual import optm_visual
+from torchvision import models
 import configparser
 import argparse
 import pickle
-
+import cv2
 #config 
 parser = argparse.ArgumentParser(description='Filter visualization for MapNet with ResNet34')
 parser.add_argument('--dataset', type=str, choices=('7Scenes','AachenDay','AachenNight',
                                                     'Cambridge','stylized','Dog_and_Cat'),
                     help = 'Dataset')
 parser.add_argument('--styles',type=int,choices=(0,4,8,16))
-#parser.add_argument('--weights',type=str,help='model weights to load')
-#parser.add_argument('--seed', type=int, help= 'random number generateor')
-#parser.add_argument('--mode', type=str, choices=('individual','all'),help= 'visualize per block or all blocks')
-#parser.add_argument('--layer', type=int, choices=(1,2,3,4), help= "choose layer to visualize when mode is 'indivisual' ")
-#parser.add_argument('--block', type=int, help= "choose block to visualize when mode is 'individual'. Valid values: [0~2,0~3,0~5,0~2] (layer1 - layer4) ")
 parser.add_argument('--method',type=str, choices=('guidedbp','vanilla'), help='methods for visualization')
 parser.add_argument('--mode',type=str, choices=('maxima_full','maxima_patches','same_images',
                                         'image_directories_dict','one_image_for_all_blocks','optm_visual','plot_activation','patch_grid')
@@ -35,16 +33,6 @@ parser.add_argument('--sample_test',type=int
                                     , help='which sample image to choose when in mode one_image_for_all_blocks ')
 args = parser.parse_args()
 
-# if the mode is 'individual', check the block index is valid
-# should have [3,4,6,3] blocks for the four layers of ResNet32.
-#if args.layer == 1 and args.mode == 'individual':
-#    assert args.block >= 0 and args.block<=2, ValueError
-#elif args.layer == 2 and args.mode == 'individual':
-#    assert args.block >= 0 and args.block<=3, ValueError
-#elif args.layer == 3 and args.mode == 'individual':
-#    assert args.block >= 0 and args.block<=5, ValueError
-#elif args.layer == 4 and args.mode == 'individual':
-#    assert args.block >= 0 and args.block<=2, ValueError
 
 # get model
 weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
@@ -53,6 +41,8 @@ weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline
                 16: 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar'}       
 weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[args.styles])
 model = get_model(weights_dir)
+#model._modules['layer4'][0]._modules['conv2'].weight.data = torch.zeros_like(model._modules['layer4'][0]._modules['conv2'].weight.data)
+#model = models.resnet34(pretrained=False)
 model.eval()
 
 # define root folder
@@ -115,7 +105,8 @@ if 'maxima' in args.mode:
 
                 mode_folder = osp.join(root_folder,args.mode)
 
-                guided_grads = pipe_line(input_img, model, layer, block, args.method, filter_idx = filter_idx)
+                #guided_grads = pipe_line(input_img, model, layer, block, args.method, filter_idx = filter_idx)
+                guided_grads = None
                 if args.mode == 'maxima_patches' and args.method == 'guidedbp':
                     # define mode folder
                     mode_folder = osp.join(root_folder,args.mode)
@@ -135,21 +126,35 @@ if 'maxima' in args.mode:
 
                 elif args.mode == 'maxima_full' and args.method == 'guidedbp':
                     mode_folder = osp.join(root_folder,args.mode)
-
-                    if layer != 4: 
-                        kernel_size = 50
-                        if layer == 3:
-                            kernel_size = 100
+                    to_size = (112,112)
+                    #[guided_grads,mask] = pipeline_layer(input_img, model, layer, block, args.method, filter_idx = filter_idx)
+                    [guided_grads,mask] = pipeline_layer(input_img, model, layer, block,to_size)
+                    #if layer != 4: 
+                    #    kernel_size = 50
+                    #    if layer == 3:
+                    #        kernel_size = 100
                 
-                        max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
-                        max_index = np.unravel_index(max_index_flat,(224,224))
-                        patch_slice = get_patch_slice(guided_grads.copy(),max_index,kernel_size=kernel_size)
-                        grads_to_save,img_to_save = bounding_box(norm_std(guided_grads.copy()),img.copy(),patch_slice)
-                    else:
-                        grads_to_save = norm_std(guided_grads)
-                        img_to_save = img
-
+                    #    max_index_flat = np.argmax(np.sum(guided_grads,axis=0))
+                    #    max_index = np.unravel_index(max_index_flat,(224,224))
+                    #    patch_slice = get_patch_slice(guided_grads.copy(),max_index,kernel_size=kernel_size)
+                    #    grads_to_save,img_to_save = bounding_box(norm_std(guided_grads.copy()),img.copy(),patch_slice)
+                    #else:
+                    #    grads_to_save = norm_std(guided_grads)
+                    #    img_to_save = img
+                    grads_to_save = norm_std(guided_grads)
+                    img_to_save = resize(img,to_size)
                     
+                    #img_norml = cv2.normalize(img_to_save.astype('float'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+                    #vis = np.uint8((mask[:, :, np.newaxis] * 0.8 + 0.2) * img_norml*255)
+                    img_norml = cv2.normalize(img_to_save.astype('float'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+                    mask = grads_to_save.sum(axis=2)
+                    mask = mask / np.max(mask)
+                    threshold_scale = np.percentile(mask,65)
+                    mask[mask < threshold_scale] = 0.2 # binarize the mask
+                    mask[mask > threshold_scale] = 1.0
+                    #mask = gaussian(mask,1)
+                    img_mask = np.multiply(img_norml, mask[:,:,np.newaxis])
+                    img_mask = np.uint8(img_mask * 255)
                     #idx_nonzeros=np.where(np.sum(guided_grads,axis=0)!=0)
                     
                     #center = [(np.max(idx)-np.min(idx))//2+np.min(idx) for idx in idx_nonzeros]
@@ -165,6 +170,7 @@ if 'maxima' in args.mode:
                 if args.method == 'guidedbp':
                     save_gradient_images(grads_to_save, to_folder, file_name_to_export)
                     save_original_images(img_to_save, to_folder, file_name_to_export+'ori')
+                    save_original_images(img_mask, to_folder, file_name_to_export+'mask')
                 elif args.method == 'vanilla':
                     # Convert to grayscale
                     grayscale_guided_grads = convert_to_grayscale(guided_grads)
@@ -400,12 +406,16 @@ elif args.mode == 'plot_activation':
 elif args.mode == 'patch_grid':
     mode_folder = osp.join(root_folder,args.mode)
 
-    def patches_grid(patches): # feat_map: (C, H, W, 1)
+    def patches_grid(patches,edge=None): # feat_map: (C, H, W, 1)
         # input patch : 9x3x50x50 or 9x3x100x100
         patches = patches.transpose(0,2,3,1)
         (B,H,W,C) = patches.shape
         cnt = 3
-        G = np.ones((cnt * H + cnt+5, cnt * W + cnt+5 , C), patches.dtype)  # additional cnt for black cutting-lines
+        if edge == None:
+            G = np.ones((cnt * H + cnt+5, cnt * W + cnt+5 , C), patches.dtype)  # additional cnt for black cutting-lines
+        else:
+            edge = 5
+            G = np.ones((cnt * H + cnt+edge, cnt * W + cnt+edge , C), patches.dtype)  # additional cnt for black cutting-lines
         G *= np.min(patches)
 
         n = 0
@@ -475,8 +485,8 @@ elif args.mode == 'patch_grid':
                     grads_patches = np.zeros((topK,3,100,100))
                     img_patches = np.zeros((topK,3,100,100))
                 elif layer == 4:
-                    grads_patches = np.zeros((topK,3,224,224))
-                    img_patches = np.zeros((topK,3,224,224))
+                    grads_patches = np.zeros((topK,3,100,100))
+                    img_patches = np.zeros((topK,3,100,100))
                 for i,img_dir in enumerate(imgs_selected):
                    # print('top '+str(i+1),maxima_values[maxima_h2l][i])
 
@@ -505,11 +515,12 @@ elif args.mode == 'patch_grid':
                         grads_patch = guided_grads[:,patch_slice[0],patch_slice[1]].copy()
                         img_patch = img[patch_slice[0],patch_slice[1],:].transpose(2,0,1)
                     elif layer == 4:
-                        grads_patch = guided_grads.copy()
-                        img_patch = img.transpose(2,0,1)
+                        grads_patch = norm_std(resize(guided_grads.copy(),(3,100,100),anti_aliasing=True))
+                        img_patch = resize(img.transpose(2,0,1),(3,100,100),anti_aliasing=True)
                     #grads_patch = norm_std(grads_patch)
                 
-                    #grads_patch = grads_patch - grads_patch.min()
+                    #grads_patch = grads_patch 
+                    # - grads_patch.min()
                     #if grads_patch.max() != 0:
                     #    grads_patch /= grads_patch.max() 
                     
@@ -526,11 +537,21 @@ elif args.mode == 'patch_grid':
                     grads_patches[i] = grads_patch
                     img_patches[i] = img_patch
                 if i_sample == 0:
-                    G_grads = patches_grid(grads_patches)
-                    G_img = patches_grid(img_patches)
+                    if layer != 4:
+                        G_grads = patches_grid(grads_patches)
+                        G_img = patches_grid(img_patches)
+                    else:
+                        edge = 15
+                        G_grads = patches_grid(grads_patches,edge=edge)
+                        G_img = patches_grid(img_patches,edge=edge)
                 else:
-                    G_grads = np.concatenate((G_grads,patches_grid(grads_patches)),axis = 1)
-                    G_img = np.concatenate((G_img,patches_grid(img_patches)),axis = 1)
+                    if layer != 4:
+                        G_grads = np.concatenate((G_grads,patches_grid(grads_patches)),axis = 1)
+                        G_img = np.concatenate((G_img,patches_grid(img_patches)),axis = 1)
+                    else:
+                        edge = 15
+                        G_grads = np.concatenate((G_grads,patches_grid(grads_patches,edge)),axis = 1)
+                        G_img = np.concatenate((G_img,patches_grid(img_patches,edge)),axis = 1)
                 print('Processing Layer {}, Block {}, sample {}'.format(layer,block,i_sample))
 
             G_grads_all.append(G_grads.copy())
@@ -555,8 +576,17 @@ elif args.mode == 'patch_grid':
         path = osp.join(mode_folder,criterion, 'style_'+str(args.styles))
         if not os.path.exists(path):
                 os.makedirs(path)
-        save_original_images(G_grads_final, path, 'layer'+str(layer)+'_grads')
-        save_original_images(G_img_final, path, 'layer'+str(layer)+'_imgs')
+        G = np.concatenate((G_grads_final[:-5,:-5,:],G_img_final[:-5,:-5,:]),axis=1)
+        save_original_images(G, path, 'layer'+str(layer))
+        #if layer != 4:
+            
+          #  save_original_images(G_img_final[:-5,:-5,:], path, 'layer'+str(layer)+'_imgs')
+        #else:
+        #    G = np.concatenate((G_grads_final[:-edge,:-edge,:],G_img_final[:-edge,:-edge,:]),axis=1)
+        #    save_original_images(G, path, 'layer'+str(layer))
+            #save_original_images(G_grads_final[:-edge,:-edge,:], path, 'layer'+str(layer)+'_grads')
+
+            #save_original_images(G_img_final[:-edge,:-edge,:], path, 'layer'+str(layer)+'_imgs')
     #fig1,ax1 = plt.subplots(ncols=1)
     #fig2,ax2 = plt.subplots(ncols=1)
     #ax1.imshow(G_grads_final) 

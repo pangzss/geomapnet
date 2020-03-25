@@ -63,6 +63,10 @@ class StrongFilterExtractor():
 def generate_strong_filters(model,dataset,path1,path2, iterations=None,criterion='max'):
     path = osp.join('data', dataset)
     img_dirs = os.listdir(path)
+    num_samples = 350
+    if len(img_dirs)>=num_samples:
+        rand_idces = np.random.permutation(len(img_dirs))[:num_samples]
+        img_dirs = [img_dirs[idx] for idx in rand_idces]
     img_tensor = torch.zeros(len(img_dirs),3,224,224)
     for i,name in enumerate(img_dirs):
         img_path = osp.join(path,name)

@@ -1,0 +1,172 @@
+from __future__ import division
+import sys
+from torch.utils import data
+import numpy as np
+import ntpath
+import random
+
+import transforms3d.quaternions as txq
+from utils import load_image
+import os
+import tqdm
+from PIL import Image
+
+sys.path.insert(0, '../')
+from common.pose_utils import process_poses_quaternion
+
+
+available_styles = [
+    'goeritz',
+    'asheville',
+    'mondrian',
+    'scene_de_rue',
+    'flower_of_life',
+    'antimonocromatismo',
+    'woman_with_hat_matisse',
+    'trial',
+    'sketch',
+    'picasso_self_portrait',
+    'picasso_seated_nude_hr',
+    'la_muse',
+    'contrast_of_forms',
+    'brushstrokes',
+    'the_resevoir_at_poitiers',
+    'woman_in_peasant_dress'
+]
+
+class Sample:
+    def __init__(self, index, path, stylized=None):
+        self.index = index
+        self.path = path
+        self.pose = pose
+        self.stylized = stylized
+
+class AachenDayNight(data.Dataset):
+    def __init__(self, data_path, train,skip_images=False,real=False,transform=None, 
+                target_transform=None, num_styles=0,
+                train_split=20,seed=7,scene=None):
+        np.random.seed(seed)
+        self.data_path = data_path
+        self.train = train
+        self.num_styles = num_styles
+        self.skip_images = skip_images
+        self.train_split = train_split
+        print('-train status: {}. \n-train&val ratio: {}'.\
+              format(self.train,self.train_split))
+        self.images = []
+        self.poses = []
+        self.gt_idx = np.empty((0,), dtype=np.int)
+        self.train_idces = []
+        self.val_idces = []
+        self.transform = transform
+        self.target_transform = target_transform
+    
+
+        nvm_file_name = os.path.join(self.data_path,'3D_model','aachen_cvpr2018_db.nvm')
+        nvm_file = open(nvm_file_name,'r')
+        lines = nvm_file.readlines()
+        num_pts = int(lines[2].strip())
+        pose_lines = lines[3:num_pts+3]
+        pose_lines = [x.strip().split(' ') for x in pose_lines]
+        for i in tqdm.tqdm(range(len(pose_lines)), total=len(pose_lines),
+                            desc='Read images and load pose', leave=False):
+            pose_i = pose_lines[i]
+            # rotation quaternion
+            q = [float(x) for x in pose_i[2:6]]
+            # camera center
+            c = [float(x) for x in pose_i[6:9]]
+            pose = np.asarray(c+q)
+            self.poses.append(pose)
+            path = os.path.join(self.data_path,pose_i[0])
+            self.images.append(path)
+        self.poses = np.vstack(self.poses)
+         # generate pose stats file
+        pose_stats_filename = os.path.join(self.data_path, 'pose_stats.txt')
+
+        if self.train:
+            # optionally, use the ps dictionary to calc stats
+            mean_t = self.poses[:, :3].mean(axis=0)
+            std_t = self.poses[:, :3].std(axis=0)
+            print('save and use pose stats file')
+            np.savetxt(
+                pose_stats_filename, np.vstack(
+                    (mean_t, std_t)), fmt='%8.7f')
+        else:
+            mean_t, std_t = np.loadtxt(pose_stats_filename)
+            print('use generated pose stats file')
+        self.poses = process_poses_quaternion(self.poses[:,:3], self.poses[:,3:], mean_t, std_t, np.eye(3), np.zeros(3), np.ones(1))
+        # extract train or val data
+        for i in tqdm.tqdm(range(len(self.images)), total=len(self.images), desc='Split dataset', leave=False):
+            if i % self.train_split == 0:
+                self.val_idces.append(i)
+            else:
+                self.train_idces.append(i)
+        print('Processed {:d} images'.format(len(self.images)))
+        print('%d training points\n%d validation points'%(len(self.train_idces), len(self.val_idces)))
+        selected_idces = self.train_idces if self.train else self.val_idces
+        self.images = [self.images[i] for i in tqdm.tqdm(selected_idces, total=len(selected_idces), desc='reduce dataset', leave=False)]
+        self.poses = self.poses[selected_idces]
+        self.gt_idx = np.stack(selected_idces)
+
+       
+        
+    def __getitem__(self, index):
+        if self.skip_images:
+            img = None
+            pose = self.poses[index]
+        else:
+            img = None
+            while img is None:
+                img = load_image(self.images[index])
+                pose = self.poses[index]
+                index += 1
+            index -= 1
+
+        if self.target_transform is not None:
+            pose = self.target_transform(pose) 
+        if self.skip_images:
+            return img, pose
+
+        if self.transform is not None:
+            img = self.transform(img)
+        return img,pose
+
+    def __len__(self):
+      return self.poses.shape[0]
+
+def main():
+    """
+    visualizes the dataset
+    """
+    from common.vis_utils import show_batch, show_stereo_batch
+    from torchvision.utils import make_grid
+    import torchvision.transforms as transforms
+
+    num_workers = 6
+    transform = transforms.Compose([
+    transforms.Resize(224),
+    transforms.RandomCrop((224,224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+      std=[0.229, 0.224, 0.225])])
+    
+    data_path = '../data/deepslam_data/AachenDayNight'
+    train = True
+    dset = AachenDayNight(data_path, train,transform=transform)
+    print('Loaded AachenDayNight training data, length = {:d}'.format(
+    len(dset)))
+    data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
+    num_workers=num_workers)
+    batch_count = 0
+    N = 2
+    for batch in data_loader:
+        print(len(batch))
+        print('Minibatch {:d}'.format(batch_count))
+        show_batch(make_grid(batch[0], nrow=1, padding=5, normalize=True))
+
+        batch_count += 1
+        if batch_count >= N:
+            break
+
+if __name__ == '__main__':
+    main()

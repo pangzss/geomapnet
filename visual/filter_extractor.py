@@ -57,3 +57,16 @@ def generate_strong_filters(model,dataset,path1,path2):
 
     with open(path2, 'wb') as fp:
         pickle.dump(img_dirs, fp)
+
+if __name__ == "__main__":
+    style = 16
+    weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
+                4: 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
+                8:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
+                16: 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar'}       
+    weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[style])
+    model = get_model(weights_dir)
+    model.eval()
+    filter_maxima_path = '../0311_filter'+'style_'+str(style)+'.pt'
+    img_dirs_path = '../0311_img'+'style_'+str(style)+'.txt'
+    generate_strong_filters(model,'AachenDay',filter_maxima_path,img_dirs_path)

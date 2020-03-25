@@ -6,15 +6,16 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
 script to calculate pose translation stats (run first for every dataset)
 """
-from . import set_paths
+import set_paths
 from dataset_loaders.seven_scenes import SevenScenes
-from dataset_loaders.robotcar import RobotCar
+#from dataset_loaders.robotcar import RobotCar
+from dataset_loaders.aachen_day_night import AachenDayNight
 import argparse
 import os.path as osp
 
 # config
 parser = argparse.ArgumentParser(description='Calculate pose translation stats')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, help='Scene name')
 args = parser.parse_args()
@@ -27,8 +28,10 @@ kwargs = dict(scene=args.scene, data_path=data_dir, train=True, real=False,
   skip_images=True, seed=7)
 if args.dataset == '7Scenes':
   dset = SevenScenes(**kwargs)
-elif args.dataset == 'RobotCar':
-  dset = RobotCar(**kwargs)
+#elif args.dataset == 'RobotCar':
+#  dset = RobotCar(**kwargs)
+elif args.dataset == 'AachenDayNight':
+  dset = AachenDayNight(**kwargs)
 else:
   raise NotImplementedError
 

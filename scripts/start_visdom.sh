@@ -1,0 +1,1 @@
+python -m visdom.server -env_path=scripts/logs/

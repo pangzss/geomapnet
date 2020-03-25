@@ -52,6 +52,11 @@ class MF(data.Dataset):
       if self.include_vos and self.real:
         self.gt_dset = RobotCar(*args, skip_images=True, real=False,
           **kwargs)
+    elif dataset == 'AachenDayNight':
+      from .aachen_day_night import AachenDayNight
+      self.dset = AachenDayNight(*args, 
+                          real=self.real, **kwargs)
+
     else:
       raise NotImplementedError
 

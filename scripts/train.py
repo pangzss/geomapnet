@@ -6,7 +6,7 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
 Main training script for MapNet
 """
-from . import set_paths
+import set_paths
 from common.train import Trainer
 from common.optimizer import Optimizer
 from common.criterion import PoseNetCriterion, MapNetCriterion,\
@@ -21,10 +21,10 @@ import json
 import torch
 from torch import nn
 from torchvision import transforms, models
-
+import random
 parser = argparse.ArgumentParser(description='Training script for PoseNet and'
                                              'MapNet variants')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, help='Scene name')
 parser.add_argument('--config_file', type=str, help='configuration file')
@@ -42,6 +42,9 @@ parser.add_argument('--resume_optim', action='store_true',
   help='Resume optimization (only effective if a checkpoint is given')
 parser.add_argument('--suffix', type=str, default='',
                     help='Experiment name suffix (as is)')
+parser.add_argument('--init_seed', type=int, default=0, help='Set seed for random initialization of model')
+parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
+parser.add_argument('--port', type=int, default=8097, help='set visdom port')
 args = parser.parse_args()
 
 settings = configparser.ConfigParser()
@@ -56,13 +59,14 @@ weight_decay = optim_config.pop('weight_decay')
 section = settings['hyperparameters']
 dropout = section.getfloat('dropout')
 color_jitter = section.getfloat('color_jitter', 0)
-sax = 0.0
+sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
+train_split = section.getint('train_split', 6)
 if args.model.find('mapnet') >= 0:
   skip = section.getint('skip')
   real = section.getboolean('real')
   variable_skip = section.getboolean('variable_skip')
-  srx = 0.0
+  srx = section.getfloat('gamma_translation', 0.0)
   srq = section.getfloat('gamma')
   steps = section.getint('steps')
 if args.model.find('++') >= 0:
@@ -71,6 +75,15 @@ if args.model.find('++') >= 0:
 
 section = settings['training']
 seed = section.getint('seed')
+
+
+det_seed = args.init_seed
+if det_seed >= 0:
+    random.seed(det_seed)
+    torch.manual_seed(det_seed)
+    np.random.seed(det_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 # model
 feature_extractor = models.resnet34(pretrained=True)
@@ -112,12 +125,16 @@ optimizer = Optimizer(params=param_list, method=opt_method, base_lr=lr,
   weight_decay=weight_decay, **optim_config)
 
 data_dir = osp.join('..', 'data', args.dataset)
-stats_file = osp.join(data_dir, args.scene, 'stats.txt')
+if args.dataset == '7Scenes':
+  stats_file = osp.join(data_dir, args.scene, 'stats.txt')
+else:
+  stats_file = osp.join(data_dir, 'stats.txt')
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 # transformers
 tforms = [transforms.Resize(256)]
+tforms.append(transforms.CenterCrop(crop_size))
 if color_jitter > 0:
   assert color_jitter <= 1.0
   print('Using ColorJitter data augmentation')
@@ -141,6 +158,10 @@ if args.model == 'posenet':
     from dataset_loaders.robotcar import RobotCar
     train_set = RobotCar(train=True, **kwargs)
     val_set = RobotCar(train=False, **kwargs)
+  elif args.dataset == 'AachenDayNight':
+    from dataset_loaders.Aachen import AachenDayNight
+    train_set = AachenDayNight(train=True, **kwargs)
+    val_set = AachenDayNight(train=False, **kwargs)
   else:
     raise NotImplementedError
 elif args.model.find('mapnet') >= 0:
@@ -158,16 +179,21 @@ else:
 # trainer
 config_name = args.config_file.split('/')[-1]
 config_name = config_name.split('.')[0]
-experiment_name = '{:s}_{:s}_{:s}_{:s}'.format(args.dataset, args.scene,
-  args.model, config_name)
+if args.dataset == '7Scenes':
+  experiment_name = '{:s}_{:s}_{:s}_{:s}'.format(args.dataset, args.scene,
+    args.model, config_name)
+else:
+  experiment_name = '{:s}_{:s}_{:s}'.format(args.dataset,
+    args.model, config_name)
 if args.learn_beta:
-  experiment_name = '{:s}_learn_beta'.format(experiment_name)
 if args.learn_gamma:
   experiment_name = '{:s}_learn_gamma'.format(experiment_name)
+if det_seed >= 0:
+  experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed) 
 experiment_name += args.suffix
 trainer = Trainer(model, optimizer, train_criterion, args.config_file,
                   experiment_name, train_set, val_set, device=args.device,
                   checkpoint_file=args.checkpoint,
-                  resume_optim=args.resume_optim, val_criterion=val_criterion)
+                  resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
 lstm = args.model == 'vidloc'
 trainer.train_val(lstm=lstm)

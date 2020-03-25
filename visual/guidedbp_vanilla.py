@@ -52,12 +52,12 @@ class GuidedBackprop():
             if self.filter_idx == None:
                 activation_maps = output
                 strong_idces = self.get_strongest_filters(activation_maps, top=self.num_maps)
-                
                 self.conv_output = output[0, strong_idces]
             else:
+                #print(self.model._modules['layer'+str(self.selected_layer)][self.selected_block]._modules['conv2'].weight.data.flatten().topk(5))
                 self.conv_output = output[0, self.filter_idx]
         # Hook the selected layer
-        self.hook_list.append(self.model._modules['layer'+str(self.selected_layer)][self.selected_block].register_forward_hook(hook_function))
+        self.hook_list.append(self.model._modules['layer'+str(self.selected_layer)][self.selected_block]._modules['conv2'].register_forward_hook(hook_function))
 
     def update_relus(self):
         """
@@ -111,8 +111,12 @@ class GuidedBackprop():
         
         # Zero gradients
         self.model.zero_grad()
-    
+
         loss = torch.max(self.conv_output)
+        #if self.selected_layer >= 3:
+        #    idx = np.argsort(self.conv_output.detach().numpy().flatten())[::-1]
+        #    print(idx[:5])
+        #    print(self.conv_output.detach().numpy().flatten()[idx[:5]])
         loss.backward()
 
 

@@ -2,6 +2,7 @@ import sys
 sys.path.append('../')
 
 import os
+import io
 import copy
 import numpy as np
 from PIL import Image
@@ -208,19 +209,89 @@ def bounding_box(grads_to_save,img_to_save,patch_slice):
 
     return grads_to_save,img_to_save
 
-def norm_std(img):
+def norm_std(img,scale=0.05):
     """ Normalization of conv2d filters for visualization
     https://github.com/jacobgil/keras-filter-visualization/blob/master/utils.py
     Args:
         filter_in: [size_x, size_y, n_channel]
     """
-    x = img
+    x = img.copy()
     x -= x.mean()
     x /= (x.std() + 1e-5)
     # make most of the value between [-0.5, 0.5]
-    x *= 0.075
+    x *= scale
     # move to [0, 1]
-    x += 0.5
+    x += 0.3
     x *= 255
     x = np.clip(x, 0, 255).astype('uint8')
     return x
+
+def get_img_from_fig(fig, dpi=180):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi)
+    buf.seek(0)
+    img_arr = np.frombuffer(buf.getvalue(), dtype=np.uint8)
+    buf.close()
+    img = cv2.imdecode(img_arr, 1)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    return img
+
+def unique(ar, return_index=False, return_inverse=False, return_counts=False):
+    ar = np.asanyarray(ar).flatten()
+
+    optional_indices = return_index or return_inverse
+    optional_returns = optional_indices or return_counts
+
+    if ar.size == 0:
+        if not optional_returns:
+            ret = ar
+        else:
+            ret = (ar,)
+            if return_index:
+                ret += (np.empty(0, np.bool),)
+            if return_inverse:
+                ret += (np.empty(0, np.bool),)
+            if return_counts:
+                ret += (np.empty(0, np.intp),)
+        return ret
+    if optional_indices:
+        perm = ar.argsort(kind='mergesort' if return_index else 'quicksort')
+        aux = ar[perm]
+    else:
+        ar.sort()
+        aux = ar
+    flag = np.concatenate(([True], aux[1:] != aux[:-1]))
+
+    if not optional_returns:
+        ret = aux[flag]
+    else:
+        ret = (aux[flag],)
+        if return_index:
+            ret += (perm[flag],)
+        if return_inverse:
+            iflag = np.cumsum(flag) - 1
+            inv_idx = np.empty(ar.shape, dtype=np.intp)
+            inv_idx[perm] = iflag
+            ret += (inv_idx,)
+        if return_counts:
+            idx = np.concatenate(np.nonzero(flag) + ([ar.size],))
+            ret += (np.diff(idx),)
+    return ret
+
+
+def colorEncode(labelmap, colors, mode='RGB'):
+    labelmap = labelmap.astype('int')
+    labelmap_rgb = np.zeros((labelmap.shape[0], labelmap.shape[1], 3),
+                            dtype=np.uint8)
+    for label in unique(labelmap):
+        if label < 0:
+            continue
+        labelmap_rgb += (labelmap == label)[:, :, np.newaxis] * \
+            np.tile(colors[label],
+                    (labelmap.shape[0], labelmap.shape[1], 1))
+
+    if mode == 'BGR':
+        return labelmap_rgb[:, :, ::-1]
+    else:
+        return labelmap_rgb

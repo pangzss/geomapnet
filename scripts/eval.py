@@ -30,7 +30,7 @@ import pickle
 parser = argparse.ArgumentParser(description='Evaluation script for PoseNet and'
                                              'MapNet variants')
 # modeified by pang 
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight',
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDay',
                                                 'CambridgeLandmarks','stylized'),
                     help='Dataset')
 
@@ -93,7 +93,14 @@ if osp.isfile(weights_filename):
 else:
   print('Could not load weights from {:s}'.format(weights_filename))
   sys.exit(-1)
-
+for j in np.arange(2):
+  for i in np.arange(2)+1:
+    j=1
+    i=2
+    print(j,i)
+    model._modules['mapnet']._modules['feature_extractor']._modules['layer4'][j]._modules['conv'+str(i)].weight.data = \
+      torch.zeros_like(model._modules['mapnet']._modules['feature_extractor']._modules['layer4'][j]._modules['conv'+str(i)].weight.data)
+    
 data_dir = osp.join('..', 'data', args.dataset)
 stats_filename = osp.join(data_dir, args.scene, 'stats.txt')
 stats = np.loadtxt(stats_filename)
