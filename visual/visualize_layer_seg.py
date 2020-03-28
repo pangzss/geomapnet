@@ -182,21 +182,24 @@ for layer in range(1,4+1):
                 grads_normld_summed = np.sum(grads_normld,axis=2)
 
                 building_index = (label==1) + (label==0) + (label==6)
-                building_grad = np.sum(grads_normld_summed[building_index]) if len(np.nonzero(building_index)[0]) is not 0 else 0
-                building_grad_ratio = building_grad / np.sum(grads_normld_summed)
+                building_grad = np.sum(grads_normld_summed[building_index])/len(np.nonzero(building_index)[0]) \
+                                                            if len(np.nonzero(building_index)[0]) is not 0 else 0
+                #building_grad_ratio = building_grad/len(np.nonzero(building_index)[0]) #/ np.sum(grads_normld_summed)
 
                 light_index = label==255
-                light_grad = np.sum(grads_normld_summed[light_index]) if len(np.nonzero(light_index)[0]) is not 0 else 0
-                light_grad_ratio = light_grad / np.sum(grads_normld_summed)
+                light_grad = np.sum(grads_normld_summed[light_index])/len(np.nonzero(light_index)[0]) \
+                                                             if len(np.nonzero(light_index)[0]) is not 0 else 0
+                #light_grad_ratio = light_grad / len(np.nonzero(light_index)[0])#np.sum(grads_normld_summed)
 
 
                 near_sky_index = label==67
-                near_sky_grad = np.sum(grads_normld_summed[near_sky_index]) if len(np.nonzero(near_sky_index)[0]) is not 0 else 0
-                near_sky_grad_ratio = near_sky_grad / np.sum(grads_normld_summed)
+                near_sky_grad = np.sum(grads_normld_summed[near_sky_index]) / len(np.nonzero(near_sky_index)[0]) \
+                                                    if len(np.nonzero(near_sky_index)[0]) is not 0 else 0
+                #near_sky_grad_ratio = near_sky_grad / len(np.nonzero(near_sky_index)[0])#np.sum(grads_normld_summed)
 
                 others_index = (np.ones_like(near_sky_index) - (building_index+light_index+near_sky_index)*1) == 1
-                others_grad = np.sum(grads_normld_summed[others_index])
-                others_grad_ratio = others_grad /np.sum(grads_normld_summed)
+                others_grad = np.sum(grads_normld_summed[others_index]) / len(np.nonzero(others_index)[0])
+                #others_grad_ratio = others_grad / len(np.nonzero(near_sky_index)[0])#np.sum(grads_normld_summed)
 
 
                 grads_output = Image.fromarray(grads_output)
@@ -204,7 +207,7 @@ for layer in range(1,4+1):
                 font = ImageFont.truetype("./open-sans/OpenSans-Regular.ttf", 8)
             
                 draw.text((0, 0),"Building={:.3f}\nLight={:.3f}\nNear sky={:.3f}\nOthers={:.3f}"\
-                    .format(building_grad_ratio,light_grad_ratio,near_sky_grad_ratio,others_grad_ratio),(255,255,255),font = font)
+                    .format(building_grad,light_grad,near_sky_grad,others_grad),(255,255,255),font = font)
 
                 grads_output = np.asarray(grads_output)
                 G_col.append(grads_output)

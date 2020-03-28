@@ -30,10 +30,10 @@ import pickle
 parser = argparse.ArgumentParser(description='Evaluation script for PoseNet and'
                                              'MapNet variants')
 # modeified by pang 
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDay',
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight',
                                                 'CambridgeLandmarks','stylized'),
                     help='Dataset')
-
+parser.add_argument('--num_styles', type=int, default=0, help='number of styles per image')
 parser.add_argument('--scene', type=str, help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
@@ -93,27 +93,29 @@ if osp.isfile(weights_filename):
 else:
   print('Could not load weights from {:s}'.format(weights_filename))
   sys.exit(-1)
-for j in np.arange(2):
-  for i in np.arange(2)+1:
-    j=1
-    i=2
-    print(j,i)
-    model._modules['mapnet']._modules['feature_extractor']._modules['layer4'][j]._modules['conv'+str(i)].weight.data = \
-      torch.zeros_like(model._modules['mapnet']._modules['feature_extractor']._modules['layer4'][j]._modules['conv'+str(i)].weight.data)
-    
+
+
 data_dir = osp.join('..', 'data', args.dataset)
-stats_filename = osp.join(data_dir, args.scene, 'stats.txt')
-stats = np.loadtxt(stats_filename)
+if args.dataset == '7Scenes':
+  stats_file = osp.join(data_dir, args.scene, 'stats.txt')
+else:
+  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(args.num_styles))
+stats = np.loadtxt(stats_file)
+crop_size_file = osp.join(data_dir, 'crop_size.txt')
+crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 
 # transformer
 data_transform = transforms.Compose([
-  transforms.Resize(256),
+  transforms.Resize(crop_size),
   transforms.ToTensor(),
   transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1]))])
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 
 # read mean and stdev for un-normalizing predictions
-pose_stats_file = osp.join(data_dir, args.scene, 'pose_stats.txt')
+if args.dataset == '7Scenes':
+  pose_stats_file = osp.join(data_dir, args.scene, 'pose_stats.txt')
+else:
+  pose_stats_file = osp.join(data_dir, 'pose_stats.txt')
 pose_m, pose_s = np.loadtxt(pose_stats_file)  # mean and stdev
 
 # dataset
@@ -141,6 +143,11 @@ elif args.dataset == '7Scenes':
 elif args.dataset == 'RobotCar':
   from dataset_loaders.robotcar import RobotCar
   data_set = RobotCar(**kwargs)
+  L = len(data_set)
+elif args.dataset == 'AachenDayNight':
+  kwargs = dict(kwargs,num_styles=args.num_styles)
+  from dataset_loaders.aachen_day_night import AachenDayNight
+  data_set = AachenDayNight(**kwargs)
   L = len(data_set)
 else:
   raise NotImplementedError
@@ -172,7 +179,9 @@ for batch_idx, (data, target) in enumerate(loader):
   else:
     idx = [batch_idx]
   idx = idx[len(idx) // 2]
- 
+  
+  if args.dataset == 'AachenDayNight':
+    data = data[0]
   # output : 1 x 6 or 1 x STEPS x 6
   _, output = step_feedfwd(data, model, CUDA, train=False)
   s = output.size()

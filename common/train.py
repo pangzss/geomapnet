@@ -108,6 +108,8 @@ class Trainer(object):
     self.config['val_freq'] = section.getint('val_freq')
     self.config['cuda'] = torch.cuda.is_available()
     self.config['max_grad_norm'] = section.getfloat('max_grad_norm', 0)
+    # probability that real images are kept
+    self.config['real_prob'] = section.getint('real_prob', 100)
 
     section = settings['logging']
     self.config['log_visdom'] = section.getboolean('visdom')
@@ -165,7 +167,15 @@ class Trainer(object):
         checkpoint = torch.load(checkpoint_file, map_location=loc_func)
         load_state_dict(self.model, checkpoint['model_state_dict'])
         if resume_optim:
+          
           self.optimizer.learner.load_state_dict(checkpoint['optim_state_dict'])
+          
+          # the states are loaded into cpu. Convert them back to GPU to avoid errors
+          for state in self.optimizer.learner.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.cuda()
+
           self.start_epoch = checkpoint['epoch']
           if 'criterion_state_dict' in checkpoint:
             c_state = checkpoint['criterion_state_dict']
@@ -318,6 +328,136 @@ class Trainer(object):
     print('Epoch {:d} checkpoint saved'.format(epoch))
     if self.config['log_visdom']:
       self.vis.save(envs=[self.vis_env])
+
+  def style_train_val(self):
+      """
+      Function that does the training and validation
+      :param lstm: whether the model is an LSTM
+      :return: 
+      """
+      for epoch in range(self.start_epoch, self.config['n_epochs']):
+        # VALIDATION
+        if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
+                                        (epoch == self.config['n_epochs']-1)) :
+          val_batch_time = Logger.AverageMeter()
+          val_loss = Logger.AverageMeter()
+          self.model.eval()
+          end = time.time()
+          val_data_time = Logger.AverageMeter()
+          for batch_idx, (data, target) in enumerate(self.val_loader):
+            
+            val_data_time.update(time.time() - end)
+            imgs = data[0]
+            #styl_imgs = data[0][1]
+            
+            kwargs = dict(target=target, criterion=self.val_criterion,
+              optim=self.optimizer, train=False)
+          
+            loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
+              **kwargs)
+
+            val_loss.update(loss)
+            val_batch_time.update(time.time() - end)
+
+            if batch_idx % self.config['print_freq'] == 0:
+              print('Val {:s}: Epoch {:d}\t' \
+                    'Batch {:d}/{:d}\t' \
+                    'Data time {:.4f} ({:.4f})\t' \
+                    'Batch time {:.4f} ({:.4f})\t' \
+                    'Loss {:f}' \
+                .format(self.experiment, epoch, batch_idx, len(self.val_loader)-1,
+                val_data_time.val, val_data_time.avg, val_batch_time.val,
+                val_batch_time.avg, loss))
+              if self.config['log_visdom']:
+                self.vis.save(envs=[self.vis_env])
+
+            end = time.time()
+
+          print('Val {:s}: Epoch {:d}, val_loss {:f}'.format(self.experiment,
+            epoch, val_loss.avg))
+
+          if self.config['log_visdom']:
+            self.vis.line(X=np.asarray([epoch]),
+              Y=np.asarray([val_loss.avg]), win=self.loss_win, name='val_loss',
+              update='append', env=self.vis_env)
+            self.vis.save(envs=[self.vis_env])
+
+        # SAVE CHECKPOINT
+        if epoch % self.config['snapshot'] == 0:
+          self.save_checkpoint(epoch)
+          print('Epoch {:d} checkpoint saved for {:s}'.\
+            format(epoch, self.experiment))
+
+        # ADJUST LR
+        lr = self.optimizer.adjust_lr(epoch)
+        if self.config['log_visdom']:
+          self.vis.line(X=np.asarray([epoch]), Y=np.asarray([np.log10(lr)]),
+            win=self.lr_win, name='learning_rate', update='append', env=self.vis_env)
+
+        # TRAIN
+        self.model.train()
+        train_data_time = Logger.AverageMeter()
+        train_batch_time = Logger.AverageMeter()
+        end = time.time()
+        for batch_idx, (data, target) in enumerate(self.train_loader):
+          train_data_time.update(time.time() - end)
+          # update batch
+          real = data[0]
+          style = data[1]
+          num_styles = len(style)
+          
+          updated_batch = torch.zeros_like(real)
+          real_prob = self.config['real_prob']
+          for idx in range(len(real)):
+              # [1,101) -> int -> [1.100]
+              draw = np.random.randint(low=1,high=101,size=1)
+              if draw > real_prob:
+                  styl_idx = np.random.randint(low=0,high=num_styles,size=1)          
+                  updated_batch[idx] = style[styl_idx[0]][idx]
+              else:
+                  updated_batch[idx] = real[idx]
+
+          kwargs = dict(target=target, criterion=self.train_criterion,
+            optim=self.optimizer, train=True,
+            max_grad_norm=self.config['max_grad_norm'])
+          
+          loss, _ = step_feedfwd(updated_batch, self.model, self.config['cuda'],
+            **kwargs)
+          
+          train_batch_time.update(time.time() - end)
+
+          if batch_idx % self.config['print_freq'] == 0:
+            n_iter = epoch*len(self.train_loader) + batch_idx
+            epoch_count = float(n_iter)/len(self.train_loader)
+            print('Train {:s}: Epoch {:d}\t' \
+                  'Batch {:d}/{:d}\t' \
+                  'Data Time {:.4f} ({:.4f})\t' \
+                  'Batch Time {:.4f} ({:.4f})\t' \
+                  'Loss {:f}\t' \
+                  'lr: {:f}'.\
+              format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
+              train_data_time.val, train_data_time.avg, train_batch_time.val,
+              train_batch_time.avg, loss, lr))
+            if self.config['log_visdom']:
+              self.vis.line(X=np.asarray([epoch_count]),
+                Y=np.asarray([loss]), win=self.loss_win, name='train_loss',
+                update='append', env=self.vis_env)
+              if self.n_criterion_params:
+                for name, v in self.train_criterion.named_parameters():
+                  v = v.data.cpu().numpy()[0]
+                  self.vis.line(X=np.asarray([epoch_count]), Y=np.asarray([v]),
+                                      win=self.criterion_param_win, name=name,
+                                      update='append', env=self.vis_env)
+              self.vis.save(envs=[self.vis_env])
+
+          end = time.time()
+
+      # Save final checkpoint
+      epoch = self.config['n_epochs']
+      self.save_checkpoint(epoch)
+      print('Epoch {:d} checkpoint saved'.format(epoch))
+      if self.config['log_visdom']:
+        self.vis.save(envs=[self.vis_env])
 
 def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
     train=True, max_grad_norm=0.0):

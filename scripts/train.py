@@ -26,7 +26,8 @@ parser = argparse.ArgumentParser(description='Training script for PoseNet and'
                                              'MapNet variants')
 parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight'),
                     help='Dataset')
-parser.add_argument('--scene', type=str, help='Scene name')
+parser.add_argument('--scene', type=str, default = ' ', help='Scene name')
+parser.add_argument('--num_styles', type=int, default=0, help='number of styles per image')
 parser.add_argument('--config_file', type=str, help='configuration file')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
   help='Model to train')
@@ -75,7 +76,7 @@ if args.model.find('++') >= 0:
 
 section = settings['training']
 seed = section.getint('seed')
-
+real_prob = section.getint('real_prob')
 
 det_seed = args.init_seed
 if det_seed >= 0:
@@ -128,13 +129,13 @@ data_dir = osp.join('..', 'data', args.dataset)
 if args.dataset == '7Scenes':
   stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 else:
-  stats_file = osp.join(data_dir, 'stats.txt')
+  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(args.num_styles))
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 # transformers
-tforms = [transforms.Resize(256)]
-tforms.append(transforms.CenterCrop(crop_size))
+tforms = [transforms.Resize(crop_size)]
+#tforms.append(transforms.CenterCrop(crop_size))
 if color_jitter > 0:
   assert color_jitter <= 1.0
   print('Using ColorJitter data augmentation')
@@ -159,7 +160,8 @@ if args.model == 'posenet':
     train_set = RobotCar(train=True, **kwargs)
     val_set = RobotCar(train=False, **kwargs)
   elif args.dataset == 'AachenDayNight':
-    from dataset_loaders.Aachen import AachenDayNight
+    kwargs = dict(kwargs, num_styles = args.num_styles)
+    from dataset_loaders.aachen_day_night import AachenDayNight
     train_set = AachenDayNight(train=True, **kwargs)
     val_set = AachenDayNight(train=False, **kwargs)
   else:
@@ -185,9 +187,13 @@ if args.dataset == '7Scenes':
 else:
   experiment_name = '{:s}_{:s}_{:s}'.format(args.dataset,
     args.model, config_name)
-if args.learn_beta:
-if args.learn_gamma:
-  experiment_name = '{:s}_learn_gamma'.format(experiment_name)
+
+experiment_name = '{:s}_{}_styles'.format(experiment_name,args.num_styles)
+experiment_name = '{:s}_{}_percent_real'.format(experiment_name,real_prob)
+#if args.learn_beta:
+#  experiment_name = '{:s}_learn_beta'.format(experiment_name)
+#if args.learn_gamma:
+#  experiment_name = '{:s}_learn_gamma'.format(experiment_name)
 if det_seed >= 0:
   experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed) 
 experiment_name += args.suffix
@@ -196,4 +202,7 @@ trainer = Trainer(model, optimizer, train_criterion, args.config_file,
                   checkpoint_file=args.checkpoint,
                   resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
 lstm = args.model == 'vidloc'
-trainer.train_val(lstm=lstm)
+if args.dataset == 'AachenDayNight':
+  trainer.style_train_val()
+else:
+  trainer.train_val(lstm=lstm)

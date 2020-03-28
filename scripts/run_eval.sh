@@ -1,3 +1,4 @@
-python eval.py --dataset 7Scenes --scene heads --model mapnet \
---weights logs/7Scenes_heads_mapnet_mapnet_learn_beta_learn_gamma/epoch_250.pth.tar \
---config_file configs/mapnet.ini --val
+python eval.py --dataset AachenDayNight --model posenet \
+--num_styles 4 \
+--weights logs/AachenDayNight_posenet_style_4_styles_80_percent_real_seed0/epoch_340.pth.tar \
+--config_file configs/style.ini --val

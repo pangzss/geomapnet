@@ -4,16 +4,15 @@ from torch.utils import data
 import numpy as np
 import ntpath
 import random
-
+import torch
 import transforms3d.quaternions as txq
-from utils import load_image
 import os
 import tqdm
 from PIL import Image
 
 sys.path.insert(0, '../')
 from common.pose_utils import process_poses_quaternion
-
+from common.utils import load_image
 
 available_styles = [
     'goeritz',
@@ -35,11 +34,10 @@ available_styles = [
 ]
 
 class Sample:
-    def __init__(self, index, path, stylized=None):
-        self.index = index
+    def __init__(self, path, pose):
         self.path = path
         self.pose = pose
-        self.stylized = stylized
+        self.stylized = None
 
 class AachenDayNight(data.Dataset):
     def __init__(self, data_path, train,skip_images=False,real=False,transform=None, 
@@ -77,11 +75,34 @@ class AachenDayNight(data.Dataset):
             c = [float(x) for x in pose_i[6:9]]
             pose = np.asarray(c+q)
             self.poses.append(pose)
-            path = os.path.join(self.data_path,pose_i[0])
-            self.images.append(path)
+            path = pose_i[0].split('/')
+            path = os.path.join(self.data_path, path[0],'real',path[1])
+            
+            self.images.append(Sample(path,pose))
+            if self.num_styles != 0:
+                img_dir, base_name = os.path.split(path)
+                img_dir,_ = os.path.split(img_dir)
+                styl_dir = os.path.join(img_dir, 'stylized')
+                base_name = base_name.split('.')
+                factor = len(available_styles) // self.num_styles
+                #styl_list = []
+                self.images[i].stylized = []
+                for j in range(self.num_styles):
+                    if self.num_styles == 1:
+                        styl_name = base_name[0] + '_stylized_'+'asheville' + '.' + base_name[1]
+                    else:
+                        styl_name = base_name[0] + '_stylized_'+available_styles[(i+j*factor) % len(available_styles)] + '.' + base_name[1]
+                    
+                    styl_path = os.path.join(styl_dir, styl_name)
+                    self.images[i].stylized.append(styl_path)
+                
+                    #styl_list.append(styl_path)
+                #self.images[i].stylized = styl_list
+         
+
         self.poses = np.vstack(self.poses)
          # generate pose stats file
-        pose_stats_filename = os.path.join(self.data_path, 'pose_stats.txt')
+        pose_stats_filename = os.path.join('../data/AachenDayNight','pose_stats.txt')
 
         if self.train:
             # optionally, use the ps dictionary to calc stats
@@ -104,32 +125,39 @@ class AachenDayNight(data.Dataset):
         print('Processed {:d} images'.format(len(self.images)))
         print('%d training points\n%d validation points'%(len(self.train_idces), len(self.val_idces)))
         selected_idces = self.train_idces if self.train else self.val_idces
-        self.images = [self.images[i] for i in tqdm.tqdm(selected_idces, total=len(selected_idces), desc='reduce dataset', leave=False)]
+        self.images = [self.images[i] for i in selected_idces]
         self.poses = self.poses[selected_idces]
+        for i in range(len(self.images)):
+            self.images[i].pose = self.poses[i]
         self.gt_idx = np.stack(selected_idces)
 
        
         
     def __getitem__(self, index):
-        if self.skip_images:
-            img = None
-            pose = self.poses[index]
-        else:
-            img = None
-            while img is None:
-                img = load_image(self.images[index])
-                pose = self.poses[index]
-                index += 1
-            index -= 1
+        
+        img = None
+        while img is None:
+            img = load_image(self.images[index].path)
+            if self.num_styles != 0:
+                styl_imgs = [load_image(self.images[index].stylized[i]) for i in range(self.num_styles)]
+            else:
+                styl_imgs = []
+            pose = self.images[index].pose
+            index += 1
+        index -= 1
 
         if self.target_transform is not None:
             pose = self.target_transform(pose) 
-        if self.skip_images:
-            return img, pose
-
-        if self.transform is not None:
-            img = self.transform(img)
-        return img,pose
+        
+        # 1x(num_styles+1)xCxHxW
+        img = self.transform(img)
+        if self.num_styles != 0:
+            styl_imgs = [self.transform(styl_imgs[i]) for i in range(self.num_styles)]
+            #styl_imgs = torch.stack(styl_imgs,dim=0)
+            #out = torch.cat([img,styl_imgs],dim=0)
+     
+        #styl_imgs = [(i,index) for i in range(4)] 
+        return (img,styl_imgs),pose
 
     def __len__(self):
       return self.poses.shape[0]
@@ -144,15 +172,14 @@ def main():
 
     num_workers = 6
     transform = transforms.Compose([
-    transforms.Resize(224),
-    transforms.RandomCrop((224,224)),
+    transforms.Resize((224,224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
       std=[0.229, 0.224, 0.225])])
     
     data_path = '../data/deepslam_data/AachenDayNight'
     train = True
-    dset = AachenDayNight(data_path, train,transform=transform)
+    dset = AachenDayNight(data_path, train,transform=transform, num_styles=16)
     print('Loaded AachenDayNight training data, length = {:d}'.format(
     len(dset)))
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
@@ -160,10 +187,26 @@ def main():
     batch_count = 0
     N = 2
     for batch in data_loader:
-        print(len(batch))
-        print('Minibatch {:d}'.format(batch_count))
-        show_batch(make_grid(batch[0], nrow=1, padding=5, normalize=True))
+    
+        real = batch[0][0]
+        style = batch[0][1]
+        num_styles = len(style)
+        
+        updated_batch = torch.zeros_like(real)
+        real_prob = 80
+        for idx in range(len(real)):
+            # [1,101) -> int -> [1.100]
+            draw = np.random.randint(low=1,high=101,size=1)
+            if draw > real_prob:
+                styl_idx = np.random.randint(low=0,high=num_styles,size=1)          
+                updated_batch[idx] = style[styl_idx[0]][idx]
+            else:
+                updated_batch[idx] = real[idx]
 
+        pose = batch[1]
+        print('Minibatch {:d}'.format(batch_count))
+        show_batch(make_grid(torch.cat([updated_batch,style[0]],dim=0), nrow=2, padding=5, normalize=True))
+        #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))
         batch_count += 1
         if batch_count >= N:
             break

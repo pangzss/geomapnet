@@ -59,7 +59,7 @@ margin = 3
 num_blocks = [3,4,6,3]
 
 layer = 4
-block = 1
+block = 2
         
 img_dirs = top_img_dirs['layer'+str(layer)]['block'+str(block)]
 
@@ -74,8 +74,8 @@ for top_i,img_dir in enumerate(img_dirs):
     hist_col = []
     grads_list = []
     for num_styles in [0,4,8,16]:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
+        #fig = plt.figure()
+        #ax = fig.add_subplot(111)
 
         print("Working with the top {} image. Current model trained with {} styles".format(top_i+1,num_styles))
         weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[num_styles])
@@ -154,8 +154,8 @@ for top_i,img_dir in enumerate(img_dirs):
             G_col.append(np.uint8(np.ones((to_size[0],2*margin,3))*255))
         if num_styles == 4 or num_styles == 8:
             G_col.append(np.uint8(np.ones((to_size[0],margin,3))*255))
-        if num_styles == 16:
-            G_col.append(np.uint8(np.ones((to_size[0],2*margin,3))*255))
+        #if num_styles == 16:
+        #    G_col.append(np.uint8(np.ones((to_size[0],2*margin,3))*255))
 
     ref = grads_list[0]
     boost_list = []
@@ -239,16 +239,16 @@ for top_i,img_dir in enumerate(img_dirs):
     carved_col = np.concatenate(carved_col,axis=1)
     #hist_col = np.concatenate(hist_col,axis=1)
     #save_original_images(hist_col, osp.join(mode_folder), 'layer_'+str(layer)+'_block_'+str(block)+'_top_'+str(top_i))
-
+    '''
     G_col = np.concatenate((G_col,discrep_col),axis=1)
     G_col = Image.fromarray(G_col).convert('RGBA')
     G_col = np.array(G_col).astype(np.uint8)
     G_col = np.concatenate((G_col,carved_col),axis=1)
-
+    '''
     G_row.append(G_col)
     #hist_row.append(hist_row)
     if top_i is not topk-1:
-        G_row.append(np.uint8(np.ones((margin,G_col.shape[1],4))*255))
+        G_row.append(np.uint8(np.ones((margin,G_col.shape[1],3))*255))
         #hist_row.append(np.uint8(np.ones((margin,hist_col.shape[1],3))*255))
 
     #carved_col = np.concatenate(carved_col,axis=1)

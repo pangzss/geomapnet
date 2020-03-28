@@ -4,5 +4,5 @@
 #Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 #
 
-python dataset_mean.py --dataset AachenDayNight
+python dataset_mean.py --dataset AachenDayNight --num_styles 16
 

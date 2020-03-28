@@ -56,9 +56,13 @@ models = {0:model_0,
           8:model_8,
           16:model_16}
 # define root folder
+
+layer = 4
+block = 0
+
 dataset = 'AachenPairs'
 root_folder = osp.join('./figs',dataset+'_files')
-mode_folder = osp.join(root_folder,'visualize_layer')
+mode_folder = osp.join(root_folder,'visualize_layer','layer_{}_block_{}'.format(layer,block))
 if not os.path.exists(mode_folder):
     os.makedirs(mode_folder)
 # img directories
@@ -83,8 +87,6 @@ else:
 # start guided bp/ vanilla
 to_size = (224,224)
 margin = 3
-layer = 4
-block = 2
 
 if not os.path.exists(osp.join(mode_folder,'checkpoint.txt')):
     checkpoint = 0
@@ -112,9 +114,10 @@ for idx,pair in enumerate(pairs[checkpoint:]):
         grads_folder_night = osp.join(mode_folder,'night','grads_layer_{}'.format(layer))
         if not os.path.exists(grads_folder_day):
             os.makedirs(grads_folder_day)
+            os.makedirs(grads_folder_night)
 
         grads_path_day = osp.join(grads_folder_day,'grads_day_{}_layer_{}_block_{}_style_{}.txt'.format(idx+1,layer,block,num_styles))
-        grads_path_night = osp.join(grads_folder_day,'grads_night_{}_layer_{}_block_{}_style_{}.txt'.format(idx+1,layer,block,num_styles))
+        grads_path_night = osp.join(grads_folder_night,'grads_night_{}_layer_{}_block_{}_style_{}.txt'.format(idx+1,layer,block,num_styles))
         # load an image
         day = load_image(day_path)
         night = load_image(night_path)
