@@ -215,8 +215,8 @@ for layer in range(1,4+1):
                     G_col.append(np.uint8(np.ones((to_size[0],2*margin,3))*255))
                 if num_styles == 4 or num_styles == 8:
                     G_col.append(np.uint8(np.ones((to_size[0],margin,3))*255))
-                if num_styles == 16:
-                    G_col.append(np.uint8(np.ones((to_size[0],2*margin,3))*255))
+                #if num_styles == 16:
+                #    G_col.append(np.uint8(np.ones((to_size[0],2*margin,3))*255))
 
 
 
@@ -298,15 +298,15 @@ for layer in range(1,4+1):
             #hist_col = np.concatenate(hist_col,axis=1)
             #save_original_images(hist_col, osp.join(mode_folder), 'layer_'+str(layer)+'_block_'+str(block)+'_top_'+str(top_i))
 
-            G_col = np.concatenate((G_col,discrep_col),axis=1)
-            G_col = Image.fromarray(G_col).convert('RGBA')
-            G_col = np.array(G_col).astype(np.uint8)
-            G_col = np.concatenate((G_col,carved_col),axis=1)
+           # G_col = np.concatenate((G_col,discrep_col),axis=1)
+          #  G_col = Image.fromarray(G_col).convert('RGBA')
+           # G_col = np.array(G_col).astype(np.uint8)
+            #G_col = np.concatenate((G_col,carved_col),axis=1)
 
             G_row.append(G_col)
             #hist_row.append(hist_row)
             if top_i is not topk-1:
-                G_row.append(np.uint8(np.ones((margin,G_col.shape[1],4))*255))
+                G_row.append(np.uint8(np.ones((margin,G_col.shape[1],3))*255))
                 #hist_row.append(np.uint8(np.ones((margin,hist_col.shape[1],3))*255))
 
             #carved_col = np.concatenate(carved_col,axis=1)

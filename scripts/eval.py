@@ -103,10 +103,12 @@ else:
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
+resize = int(max(crop_size))
 
 # transformer
 data_transform = transforms.Compose([
-  transforms.Resize(crop_size),
+  transforms.Resize(resize),
+  transforms.CenterCrop(crop_size),
   transforms.ToTensor(),
   transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1]))])
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
@@ -131,6 +133,8 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph:
   if args.pose_graph:
     assert real
     kwargs = dict(kwargs, vo_lib=vo_lib)
+  if args.dataset == 'AachenDayNight':
+    kwargs = dict(kwargs, num_styles = args.num_styles)
   vo_func = calc_vos_safe_fc if fc_vos else calc_vos_safe
   data_set = MF(dataset=args.dataset, steps=steps, skip=skip, real=real,
                 variable_skip=variable_skip, include_vos=args.pose_graph,

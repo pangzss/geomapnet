@@ -39,7 +39,8 @@ class MF(data.Dataset):
     self.train = kwargs['train']
     self.vo_func = kwargs.pop('vo_func', calc_vos_simple)
     self.no_duplicates = no_duplicates
-
+    if dataset == 'AachenDayNight':
+      self.num_styles = kwargs['num_styles']
     if dataset == '7Scenes':
       from .seven_scenes import SevenScenes
       self.dset = SevenScenes(*args, real=self.real, **kwargs)
@@ -90,7 +91,8 @@ class MF(data.Dataset):
     idx = self.get_indices(index)
     clip  = [self.dset[i] for i in idx]
 
-    imgs  = torch.stack([c[0] for c in clip], dim=0)
+    real_imgs  = torch.stack([c[0][0] for c in clip], dim=0)
+    style_imgs = [torch.stack([c[0][1][k] for c in clip], dim=0) for k in range(self.num_styles)]
     poses = torch.stack([c[1] for c in clip], dim=0)
     if self.include_vos:
       # vos = calc_vos_simple(poses.unsqueeze(0))[0] if self.train else \
@@ -101,7 +103,7 @@ class MF(data.Dataset):
         poses = torch.stack([c[1] for c in clip], dim=0)
       poses = torch.cat((poses, vos), dim=0)
 
-    return imgs, poses
+    return (real_imgs,style_imgs), poses
 
   def __len__(self):
     L = len(self.dset)

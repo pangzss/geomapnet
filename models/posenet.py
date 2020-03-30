@@ -66,9 +66,10 @@ class PoseNet(nn.Module):
     
     x = self.feature_extractor(x)
     x = F.relu(x)
+    
     if self.droprate > 0:
-      x = F.dropout(x, p=self.droprate)
-
+      x = F.dropout(x,p=self.droprate,training=self.training)
+  
     xyz  = self.fc_xyz(x)
     wpqr = self.fc_wpqr(x)
     return torch.cat((xyz, wpqr), 1)
@@ -99,4 +100,5 @@ class MapNet(nn.Module):
       x = x.view(-1, *s[1:])
     poses = self.mapnet(x)
     poses = poses.view(s[0], s[1], -1)
+   
     return poses

@@ -40,7 +40,7 @@ for layer in range(1,4+1):
         # define root folder
         dataset = 'AachenPairs'
         root_folder = osp.join('./figs',dataset+'_files')
-        mode_folder = osp.join(root_folder,'contextual_loss')
+        mode_folder = osp.join(root_folder,'contextual_loss_rand_pairs')
 
         with open(osp.join(mode_folder,'layer_{}_block_{}_cx_loss.txt'.format(layer,block)), 'r') as f:
                 cx_loss_dict = eval(f.read())

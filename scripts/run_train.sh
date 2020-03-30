@@ -5,7 +5,5 @@ python train.py --dataset AachenDayNight \
 --device 0 \
 --learn_beta \
 --learn_gamma \
---server http://localhost \
---port 8097 \
---checkpoint logs/AachenDayNight_posenet_style_4_styles_80_percent_real_seed0/epoch_300.pth.tar \
+--checkpoint logs/AachenDayNight_posenet_style_4_styles_40_percent_real_seed0/epoch_300.pth.tar \
 --resume_optim

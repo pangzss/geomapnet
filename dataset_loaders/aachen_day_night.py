@@ -193,7 +193,7 @@ def main():
         num_styles = len(style)
         
         updated_batch = torch.zeros_like(real)
-        real_prob = 80
+        real_prob = 60
         for idx in range(len(real)):
             # [1,101) -> int -> [1.100]
             draw = np.random.randint(low=1,high=101,size=1)

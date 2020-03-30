@@ -51,8 +51,8 @@ else:
   raise NotImplementedError
 
 # accumulate
-batch_size = 8
-num_workers = batch_size
+batch_size = 90
+num_workers = 8
 loader = DataLoader(dset, batch_size=batch_size, num_workers=num_workers,
                     collate_fn=safe_collate)
       

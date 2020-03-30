@@ -1,1 +1,1 @@
-python visualize_layer_query.py --dataset AachenNight
+python visualize_layer_seg.py --dataset AachenNight
