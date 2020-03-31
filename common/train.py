@@ -467,63 +467,41 @@ class Trainer(object):
 
 def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
     train=True, max_grad_norm=0.0):
-  """
-  training/validation step for a feedforward NN
-  :param data: 
-  :param target: 
-  :param model: 
-  :param criterion: 
-  :param optim: 
-  :param cuda: whether CUDA is to be used
-  :param train: training / val stage
-  :param max_grad_norm: if > 0, clips the gradient norm
-  :return: 
-  """
-  if train:
-    assert criterion is not None
-
-  with torch.set_grad_enabled(train):
-      if type(data) is list or type(data) is target:
-          data_var = [Variable(d, requires_grad=train) for d in data]
-          if cuda:
-              for i, d in enumerate(data_var):
-                  data_var[i] = d.cuda(async_=True)
-          data_var = tuple(data_var)
-      else:
-          data_var = Variable(data, requires_grad=train)
-          if cuda:
-              data_var = data_var.cuda()
-      output = model(data_var)
-    
+      """
+      training/validation step for a feedforward NN
+      :param data: 
+      :param target: 
+      :param model: 
+      :param criterion: 
+      :param optim: 
+      :param cuda: whether CUDA is to be used
+      :param train: training / val stage
+      :param max_grad_norm: if > 0, clips the gradient norm
+      :return: 
+      """
+      if train:
+        assert criterion is not None
+      data_var = Variable(data, requires_grad=train)
+      if cuda:
+        data_var = data_var.cuda(non_blocking=True)
+      with torch.set_grad_enabled(train):
+        output = model(data_var)
       if criterion is not None:
-          dual_target = type(target) is list or type(target) is tuple
-          if cuda:
-              if dual_target:
-                  target = tuple(single_target.cuda(async_=True) for single_target in target)
-              else:
-                  target = target.cuda()
-
-          if dual_target:
-              target_var = tuple(Variable(t, requires_grad=False) for t in target)
-          else:
-              target_var = Variable(target, requires_grad=False)
-
-          #print(output.shape)
-          #print(target_var.shape)
-          loss, loss_list = criterion(output, target_var)
-          
-          if train:
-              # SGD step
-              optim.learner.zero_grad()
-              loss.backward()
-              if max_grad_norm > 0.0:
-                  torch.nn.utils.clip_grad_norm_(
-                      model.parameters(), max_grad_norm)
-              
-              optim.learner.step()
-          return loss.item(), output
+        if cuda:
+          target = target.cuda(non_blocking=True)
+        target_var = Variable(target, requires_grad=False)
+        with torch.set_grad_enabled(train):
+          loss = criterion(output, target_var)
+        if train:
+          # SGD step
+          optim.learner.zero_grad()
+          loss.backward()
+          if max_grad_norm > 0.0:
+            torch.nn.utils.clip_grad_norm(model.parameters(), max_grad_norm)
+          optim.learner.step()
+        return loss.item(), output
       else:
-          return 0, output
+        return 0, output
 
 
 def step_lstm(data, model, cuda, target=None, criterion=None, optim=None,
