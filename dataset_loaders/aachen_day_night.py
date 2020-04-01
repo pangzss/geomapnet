@@ -185,7 +185,7 @@ def main():
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
-    N = 2
+    N_batches = 2
     for batch in data_loader:
     
         real = batch[0][0]
@@ -193,7 +193,7 @@ def main():
         num_styles = len(style)
         
         updated_batch = torch.zeros_like(real)
-        real_prob = 60
+        real_prob = 10
         if num_styles == 0:
             assert real_prob == 100, 'num_styles is 0 now'
         N = real.shape[0]
@@ -210,7 +210,7 @@ def main():
         show_batch(make_grid(torch.cat([updated_batch,style[0]],dim=0), nrow=2, padding=5, normalize=True))
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))
         batch_count += 1
-        if batch_count >= N:
+        if batch_count >= N_batches:
             break
 
 if __name__ == '__main__':
