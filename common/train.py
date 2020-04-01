@@ -417,8 +417,8 @@ class Trainer(object):
           real_idces = draw <= real_prob
 
           which_style = np.random.randint(low=0,high=num_styles,size=1)
-          update_batch[style_idces] = style[which_style[0]][style_idces]
-          update_batch[real_idces] = real[real_idces]
+          updated_batch[style_idces] = style[which_style[0]][style_idces]
+          updated_batch[real_idces] = real[real_idces]
           #for idx in range(len(real)):
               # [1,101) -> int -> [1.100]
 
