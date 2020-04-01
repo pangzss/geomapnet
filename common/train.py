@@ -404,20 +404,17 @@ class Trainer(object):
           # update batch
           real = data[0]
           style = data[1]
-          num_styles = len(style)
           
           updated_batch = torch.zeros_like(real)
           
           real_prob = self.config['real_prob']
-          if num_styles == 0:
-            assert real_prob == 100, 'num_styles is 0 now'
           N = real.shape[0]
           draw = np.random.randint(low=1,high=101,size=N)
           style_idces = draw > real_prob
           real_idces = draw <= real_prob
 
-          which_style = np.random.randint(low=0,high=num_styles,size=1)
-          updated_batch[style_idces] = style[which_style[0]][style_idces]
+          
+          updated_batch[style_idces] = style[style_idces]
           updated_batch[real_idces] = real[real_idces]
           #for idx in range(len(real)):
               # [1,101) -> int -> [1.100]

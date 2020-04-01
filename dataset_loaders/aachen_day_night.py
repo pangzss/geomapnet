@@ -139,9 +139,10 @@ class AachenDayNight(data.Dataset):
         while img is None:
             img = load_image(self.images[index].path)
             if self.num_styles != 0:
-                styl_imgs = [load_image(self.images[index].stylized[i]) for i in range(self.num_styles)]
+                which_style = np.random.randint(low=0,high=self.num_styles,size=1)
+                styl_img = load_image(self.images[index].stylized[which_style[0]])
             else:
-                styl_imgs = []
+                styl_img = None
             pose = self.images[index].pose
             index += 1
         index -= 1
@@ -151,13 +152,12 @@ class AachenDayNight(data.Dataset):
         
         # 1x(num_styles+1)xCxHxW
         img = self.transform(img)
-        if self.num_styles != 0:
-            styl_imgs = [self.transform(styl_imgs[i]) for i in range(self.num_styles)]
+        styl_img = img.clone()
             #styl_imgs = torch.stack(styl_imgs,dim=0)
             #out = torch.cat([img,styl_imgs],dim=0)
      
         #styl_imgs = [(i,index) for i in range(4)] 
-        return (img,styl_imgs),pose
+        return (img,styl_img),pose
 
     def __len__(self):
       return self.poses.shape[0]
@@ -190,24 +190,21 @@ def main():
     
         real = batch[0][0]
         style = batch[0][1]
-        num_styles = len(style)
         
         updated_batch = torch.zeros_like(real)
-        real_prob = 10
-        if num_styles == 0:
-            assert real_prob == 100, 'num_styles is 0 now'
+        real_prob = 80
+    
         N = real.shape[0]
         draw = np.random.randint(low=1,high=101,size=N)
         style_idces = draw > real_prob
         real_idces = draw <= real_prob
 
-        which_style = np.random.randint(low=0,high=num_styles,size=1)
-        updated_batch[style_idces] = style[which_style[0]][style_idces]
+        updated_batch[style_idces] = style[style_idces]
         updated_batch[real_idces] = real[real_idces]
 
         pose = batch[1]
         print('Minibatch {:d}'.format(batch_count))
-        show_batch(make_grid(torch.cat([updated_batch,style[0]],dim=0), nrow=2, padding=5, normalize=True))
+        show_batch(make_grid(torch.cat([updated_batch,style],dim=0), nrow=2, padding=5, normalize=True))
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))
         batch_count += 1
         if batch_count >= N_batches:
