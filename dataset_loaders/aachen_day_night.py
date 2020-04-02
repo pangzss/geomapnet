@@ -5,6 +5,9 @@ import numpy as np
 import ntpath
 import random
 import torch
+import torch.nn as nn
+from torchvision.utils import make_grid
+import torchvision.transforms as transforms
 import transforms3d.quaternions as txq
 import os
 import tqdm
@@ -13,25 +16,43 @@ from PIL import Image
 sys.path.insert(0, '../')
 from common.pose_utils import process_poses_quaternion
 from common.utils import load_image
-
+from common.vis_utils import show_batch, show_stereo_batch
+from AdaIN import net
+from AdaIN.function import adaptive_instance_normalization
 available_styles = [
-    'goeritz',
-    'asheville',
-    'mondrian',
-    'scene_de_rue',
-    'flower_of_life',
-    'antimonocromatismo',
-    'woman_with_hat_matisse',
-    'trial',
-    'sketch',
-    'picasso_self_portrait',
-    'picasso_seated_nude_hr',
-    'la_muse',
-    'contrast_of_forms',
-    'brushstrokes',
-    'the_resevoir_at_poitiers',
-    'woman_in_peasant_dress'
+    'goeritz.jpg',
+    'asheville.jpg',
+    'mondrian.jpg',
+    'scene_de_rue.jpg',
+    'flower_of_life.jpg',
+    'antimonocromatismo.jpg',
+    'woman_with_hat_matisse.jpg',
+    'trial.jpg',
+    'sketch.png',
+    'picasso_self_portrait.jpg',
+    'picasso_seated_nude_hr.jpg',
+    'la_muse.jpg',
+    'contrast_of_forms.jpg',
+    'brushstrokes.jpg',
+    'the_resevoir_at_poitiers.jpg',
+    'woman_in_peasant_dress.jpg'
 ]
+
+num_styles = len(available_styles)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+decoder = net.decoder
+vgg = net.vgg
+
+decoder.eval()
+vgg.eval()
+
+decoder.load_state_dict(torch.load('../AdaIN/models/decoder.pth'))
+vgg.load_state_dict(torch.load('../AdaIN/models/vgg_normalised.pth'))
+vgg = nn.Sequential(*list(vgg.children())[:31])
+
+vgg.to(device)
+decoder.to(device)
 
 class Sample:
     def __init__(self, path, pose):
@@ -41,15 +62,21 @@ class Sample:
 
 class AachenDayNight(data.Dataset):
     def __init__(self, data_path, train,skip_images=False,real=False,transform=None, 
-                target_transform=None, num_styles=0,
+                target_transform=None, style_dir = None,real_prob = 100, alpha=1.0,
                 train_split=20,seed=7,scene=None):
         np.random.seed(seed)
         self.data_path = data_path
         self.train = train
-        self.num_styles = num_styles
+        #
+        self.real_prob = real_prob
+        self.style_dir = style_dir
+        self.alpha = alpha
+        self.available_styles = os.listdir(style_dir) if self.style_dir is not None else None
+        print('real_prob: {}.\nstyle_dir: {}'.format(self.real_prob,self.style_dir))
+        #
         self.skip_images = skip_images
         self.train_split = train_split
-        print('-train status: {}. \n-train&val ratio: {}'.\
+        print('train status: {}. \ntrain&val ratio: {}'.\
               format(self.train,self.train_split))
         self.images = []
         self.poses = []
@@ -79,6 +106,7 @@ class AachenDayNight(data.Dataset):
             path = os.path.join(self.data_path, path[0],'real',path[1])
             
             self.images.append(Sample(path,pose))
+            '''
             if self.num_styles != 0:
                 img_dir, base_name = os.path.split(path)
                 img_dir,_ = os.path.split(img_dir)
@@ -98,7 +126,7 @@ class AachenDayNight(data.Dataset):
                 
                     #styl_list.append(styl_path)
                 #self.images[i].stylized = styl_list
-         
+            '''
 
         self.poses = np.vstack(self.poses)
          # generate pose stats file
@@ -134,15 +162,14 @@ class AachenDayNight(data.Dataset):
        
         
     def __getitem__(self, index):
-        
         img = None
         while img is None:
             img = load_image(self.images[index].path)
-            if self.num_styles != 0:
-                which_style = np.random.randint(low=0,high=self.num_styles,size=1)
-                styl_img = load_image(self.images[index].stylized[which_style[0]])
-            else:
-                styl_img = None
+            #if self.num_styles != 0:
+            #    which_style = np.random.randint(low=0,high=self.num_styles,size=1)
+            #    styl_img = load_image(self.images[index].stylized[which_style[0]])
+            #else:
+            #    styl_img = None
             pose = self.images[index].pose
             index += 1
         index -= 1
@@ -150,14 +177,40 @@ class AachenDayNight(data.Dataset):
         if self.target_transform is not None:
             pose = self.target_transform(pose) 
         
-        # 1x(num_styles+1)xCxHxW
-        img = self.transform(img)
-        styl_img = img.clone()
-            #styl_imgs = torch.stack(styl_imgs,dim=0)
-            #out = torch.cat([img,styl_imgs],dim=0)
-     
-        #styl_imgs = [(i,index) for i in range(4)] 
-        return (img,styl_img),pose
+        draw = np.random.randint(low=1,high=101,size=1)
+        if draw > self.real_prob and self.train:
+            num_styles = len(self.available_styles)
+            style_idx = np.random.choice(num_styles,1)
+            style_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
+            style = load_image(style_path)
+        
+            ## stylization
+            t_list = [t for t in self.transform.__dict__['transforms']]
+            assert isinstance(t_list[-1],transforms.Normalize), 'Please normalize the data'
+            t_norml = t_list[-1]
+            del t_list[-1]
+
+            img_t = img
+            style_t = style
+            for t in t_list:
+                img_t = t(img_t)
+                style_t = t(style_t)
+           
+            with torch.no_grad():
+                assert (0.0 <= self.alpha <= 1.0)
+                content_f = vgg(img_t.cuda().unsqueeze(0))
+                style_f = vgg(style_t.cuda().unsqueeze(0))
+                feat = adaptive_instance_normalization(content_f, style_f)
+                feat = feat * self.alpha + content_f * (1 - self.alpha)
+                stylized = decoder(feat)
+                img_t = t_norml(stylized[0].cpu())
+            
+            return img_t,pose
+        else:
+            
+            img_t = self.transform(img)
+
+            return img_t,pose
 
     def __len__(self):
       return self.poses.shape[0]
@@ -166,20 +219,17 @@ def main():
     """
     visualizes the dataset
     """
-    from common.vis_utils import show_batch, show_stereo_batch
-    from torchvision.utils import make_grid
-    import torchvision.transforms as transforms
-
-    num_workers = 6
+    num_workers = 0
     transform = transforms.Compose([
     transforms.Resize((224,224)),
     transforms.ToTensor(),
+
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
       std=[0.229, 0.224, 0.225])])
     
     data_path = '../data/deepslam_data/AachenDayNight'
     train = True
-    dset = AachenDayNight(data_path, train,transform=transform, num_styles=16)
+    dset = AachenDayNight(data_path, train,transform=transform,real_prob=10,style_dir='../data/style_selected',alpha=0.1)
     print('Loaded AachenDayNight training data, length = {:d}'.format(
     len(dset)))
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
@@ -187,24 +237,12 @@ def main():
     batch_count = 0
     N_batches = 2
     for batch in data_loader:
-    
-        real = batch[0][0]
-        style = batch[0][1]
-        
-        updated_batch = torch.zeros_like(real)
-        real_prob = 80
-    
-        N = real.shape[0]
-        draw = np.random.randint(low=1,high=101,size=N)
-        style_idces = draw > real_prob
-        real_idces = draw <= real_prob
-
-        updated_batch[style_idces] = style[style_idces]
-        updated_batch[real_idces] = real[real_idces]
-
-        pose = batch[1]
+       
         print('Minibatch {:d}'.format(batch_count))
-        show_batch(make_grid(torch.cat([updated_batch,style],dim=0), nrow=2, padding=5, normalize=True))
+        show_batch(make_grid(batch[0], nrow=2, padding=5, normalize=True))
+        
+        pose = batch[1]
+        
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))
         batch_count += 1
         if batch_count >= N_batches:

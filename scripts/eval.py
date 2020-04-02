@@ -33,7 +33,6 @@ parser = argparse.ArgumentParser(description='Evaluation script for PoseNet and'
 parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight',
                                                 'CambridgeLandmarks','stylized'),
                     help='Dataset')
-parser.add_argument('--num_styles', type=int, default=0, help='number of styles per image')
 parser.add_argument('--scene', type=str, help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
@@ -99,7 +98,7 @@ data_dir = osp.join('..', 'data', args.dataset)
 if args.dataset == '7Scenes':
   stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 else:
-  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(args.num_styles))
+  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(0))
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
@@ -134,12 +133,11 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph:
     assert real
     kwargs = dict(kwargs, vo_lib=vo_lib)
   if args.dataset == 'AachenDayNight':
-    kwargs = dict(kwargs, num_styles = args.num_styles)
-  vo_func = calc_vos_safe_fc if fc_vos else calc_vos_safe
-  data_set = MF(dataset=args.dataset, steps=steps, skip=skip, real=real,
-                variable_skip=variable_skip, include_vos=args.pose_graph,
-                vo_func=vo_func, no_duplicates=False, **kwargs)
-  L = len(data_set.dset)
+    vo_func = calc_vos_safe_fc if fc_vos else calc_vos_safe
+    data_set = MF(dataset=args.dataset, steps=steps, skip=skip, real=real,
+                  variable_skip=variable_skip, include_vos=args.pose_graph,
+                  vo_func=vo_func, no_duplicates=False, **kwargs)
+    L = len(data_set.dset)
 elif args.dataset == '7Scenes':
   from dataset_loaders.seven_scenes import SevenScenes
   data_set = SevenScenes(**kwargs)
@@ -149,7 +147,6 @@ elif args.dataset == 'RobotCar':
   data_set = RobotCar(**kwargs)
   L = len(data_set)
 elif args.dataset == 'AachenDayNight':
-  kwargs = dict(kwargs,num_styles=args.num_styles)
   from dataset_loaders.aachen_day_night import AachenDayNight
   data_set = AachenDayNight(**kwargs)
   L = len(data_set)

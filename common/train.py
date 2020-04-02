@@ -108,8 +108,7 @@ class Trainer(object):
     self.config['val_freq'] = section.getint('val_freq')
     self.config['cuda'] = torch.cuda.is_available()
     self.config['max_grad_norm'] = section.getfloat('max_grad_norm', 0)
-    # probability that real images are kept
-    self.config['real_prob'] = section.getint('real_prob', 100)
+
 
     section = settings['logging']
     self.config['log_visdom'] = section.getboolean('visdom')
@@ -354,13 +353,11 @@ class Trainer(object):
           for batch_idx, (data, target) in enumerate(self.val_loader):
             
             val_data_time.update(time.time() - end)
-            imgs = data[0]
-            #styl_imgs = data[0][1]
             
             kwargs = dict(target=target, criterion=self.val_criterion,
               optim=self.optimizer, train=False)
           
-            loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
+            loss, _ = step_feedfwd(data, self.model, self.config['cuda'],
               **kwargs)
 
             val_loss.update(loss)
@@ -409,40 +406,17 @@ class Trainer(object):
         for batch_idx, (data, target) in enumerate(self.train_loader):
           train_data_time.update(time.time() - end)
           # update batch
-          real = data[0]
-          style = data[1]
           
-          updated_batch = torch.zeros_like(real)
-          
-          real_prob = self.config['real_prob']
-          N = real.shape[0]
-          draw = np.random.randint(low=1,high=101,size=N)
-          style_idces = draw > real_prob
-          real_idces = draw <= real_prob
-
-          
-          updated_batch[style_idces] = style[style_idces]
-          updated_batch[real_idces] = real[real_idces]
-          #for idx in range(len(real)):
-              # [1,101) -> int -> [1.100]
-
-          #    draw = np.random.randint(low=1,high=101,size=1)
-          #    if draw > real_prob:
-          #        styl_idx = np.random.randint(low=0,high=num_styles,size=1)          
-          #        updated_batch[idx] = style[styl_idx[0]][idx]
-                  
-          #    else:
-          #        updated_batch[idx] = real[idx]
-          #from common.vis_utils import show_batch, show_stereo_batch
-          #from torchvision.utils import make_grid
-          #show_batch(make_grid(updated_batch, nrow=8, padding=5, normalize=True))
-          #sys.exit(-1)
-
           kwargs = dict(target=target, criterion=self.train_criterion,
             optim=self.optimizer, train=True,
             max_grad_norm=self.config['max_grad_norm'])
-          
-          loss, _ = step_feedfwd(updated_batch, self.model, self.config['cuda'],
+
+          #from common.vis_utils import show_batch, show_stereo_batch
+          #from torchvision.utils import make_grid
+          #show_batch(make_grid(data, nrow=2, padding=5, normalize=True))
+          #sys.exit(-1)
+
+          loss, _ = step_feedfwd(data, self.model, self.config['cuda'],
             **kwargs)
           
           train_batch_time.update(time.time() - end)

@@ -27,7 +27,9 @@ parser = argparse.ArgumentParser(description='Training script for PoseNet and'
 parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default = ' ', help='Scene name')
-parser.add_argument('--num_styles', type=int, default=0, help='number of styles per image')
+parser.add_argument('--style_dir', type=str, help='the directory of style images')
+parser.add_argument('--real_prob', type=int, help='the prob of using real images')
+parser.add_argument('--alpha', type=float, help='intensity of stylization')
 parser.add_argument('--config_file', type=str, help='configuration file')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
   help='Model to train')
@@ -76,8 +78,6 @@ if args.model.find('++') >= 0:
 
 section = settings['training']
 seed = section.getint('seed')
-real_prob = section.getint('real_prob')
-
 det_seed = args.init_seed
 if det_seed >= 0:
     random.seed(det_seed)
@@ -129,7 +129,7 @@ data_dir = osp.join('..', 'data', args.dataset)
 if args.dataset == '7Scenes':
   stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 else:
-  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(args.num_styles))
+  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(0))
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
@@ -162,7 +162,7 @@ if args.model == 'posenet':
     train_set = RobotCar(train=True, **kwargs)
     val_set = RobotCar(train=False, **kwargs)
   elif args.dataset == 'AachenDayNight':
-    kwargs = dict(kwargs, num_styles = args.num_styles)
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
     from dataset_loaders.aachen_day_night import AachenDayNight
     train_set = AachenDayNight(train=True, **kwargs)
     val_set = AachenDayNight(train=False, **kwargs)
@@ -190,8 +190,7 @@ else:
   experiment_name = '{:s}_{:s}_{:s}'.format(args.dataset,
     args.model, config_name)
 
-experiment_name = '{:s}_{}_styles'.format(experiment_name,args.num_styles)
-experiment_name = '{:s}_{}_percent_real'.format(experiment_name,real_prob)
+experiment_name = '{:s}_{}_percent_real'.format(experiment_name,args.real_prob)
 #if args.learn_beta:
 #  experiment_name = '{:s}_learn_beta'.format(experiment_name)
 #if args.learn_gamma:
