@@ -122,11 +122,18 @@ class Trainer(object):
     if self.config['log_visdom']:
       # start plots
       self.vis_env = experiment
-      self.loss_win = 'loss_win'
+
+      self.training_loss_win = 'training_loss_win'
       self.vis = Visdom(server=visdom_server, port=visdom_port)
-      self.vis.line(X=np.zeros((1,2)), Y=np.zeros((1,2)), win=self.loss_win,
-        opts={'legend': ['train_loss', 'val_loss'], 'xlabel': 'epochs',
+      self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.training_loss_win,
+        opts={'legend': ['train_loss'], 'xlabel': 'epochs',
               'ylabel': 'loss'}, env=self.vis_env)
+      
+      self.val_loss_win = 'val_loss_win'
+      self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.val_loss_win,
+        opts={'legend': ['val_loss'], 'xlabel': 'epochs',
+              'ylabel': 'loss'}, env=self.vis_env)
+
       self.lr_win = 'lr_win'
       self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.lr_win,
         opts={'legend': ['learning_rate'], 'xlabel': 'epochs',
@@ -261,7 +268,7 @@ class Trainer(object):
 
         if self.config['log_visdom']:
           self.vis.line(X=np.asarray([epoch]),
-            Y=np.asarray([val_loss.avg]), win=self.loss_win, name='val_loss',
+            Y=np.asarray([val_loss.avg]), win=self.val_loss_win, name='val_loss',
             update='append', env=self.vis_env)
           self.vis.save(envs=[self.vis_env])
 
@@ -310,7 +317,7 @@ class Trainer(object):
             train_batch_time.avg, loss, lr))
           if self.config['log_visdom']:
             self.vis.line(X=np.asarray([epoch_count]),
-              Y=np.asarray([loss]), win=self.loss_win, name='train_loss',
+              Y=np.asarray([loss]), win=self.training_loss_win, name='train_loss',
               update='append', env=self.vis_env)
             if self.n_criterion_params:
               for name, v in self.train_criterion.named_parameters():
@@ -378,7 +385,7 @@ class Trainer(object):
 
           if self.config['log_visdom']:
             self.vis.line(X=np.asarray([epoch]),
-              Y=np.asarray([val_loss.avg]), win=self.loss_win, name='val_loss',
+              Y=np.asarray([val_loss.avg]), win=self.val_loss_win, name='val_loss',
               update='append', env=self.vis_env)
             self.vis.save(envs=[self.vis_env])
 
@@ -454,7 +461,7 @@ class Trainer(object):
               train_batch_time.avg, loss, lr))
             if self.config['log_visdom']:
               self.vis.line(X=np.asarray([epoch_count]),
-                Y=np.asarray([loss]), win=self.loss_win, name='train_loss',
+                Y=np.asarray([loss]), win=self.training_loss_win, name='train_loss',
                 update='append', env=self.vis_env)
               if self.n_criterion_params:
                 for name, v in self.train_criterion.named_parameters():
