@@ -30,7 +30,6 @@ parser.add_argument('--dir', type=str, required=True,help='Give directory where 
 parser.add_argument('--model', choices=('posenet', 'mapnet'), help='Model to use')
 parser.add_argument('--weights', type=str, help='trained weights to load', required=True)
 parser.add_argument('--config_file', type=str, help='configuration file')
-parser.add_argument('--num_styles', type=int, default=0, help='number of styles per image')
 parser.add_argument('--device', type=str, default='0', help='GPU device(s)')
 parser.add_argument('--output_file', type=str, default='Aachen_query.txt', help='File to store output')
 args = parser.parse_args()
@@ -53,7 +52,7 @@ if (args.model.find('mapnet') >= 0):
 
 data_dir = osp.join('..', 'data', args.dataset)
 
-filename = 'stats_{}_styles'.format(args.num_styles)
+filename = 'stats'
 
 stats_file = osp.join(data_dir, '{:s}.txt'.format(filename))
 print('Using {} as stats file'.format(stats_file))

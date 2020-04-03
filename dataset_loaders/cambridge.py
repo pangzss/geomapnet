@@ -68,7 +68,7 @@ class Cambridge(data.Dataset):
             self.points.append(p)
         print('Loaded %d points'%len(self.points))
             
-        pose_stats_filename = os.path.join(self.data_path, self.scene, 'pose_stats.txt')
+        pose_stats_filename = os.path.join('../data/Cambridge', self.scene, 'pose_stats.txt')
         if train and not real:
             # optionally, use the ps dictionary to calc stats
             pos_list = []
