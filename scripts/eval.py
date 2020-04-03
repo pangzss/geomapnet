@@ -95,10 +95,11 @@ else:
 
 
 data_dir = osp.join('..', 'data', args.dataset)
-if args.dataset == '7Scenes' or 'Cambridge':
+if args.dataset == '7Scenes' or args.dataset == 'Cambridge':
+
   stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 else:
-  stats_file = osp.join(data_dir, 'stats.txt'.format(0))
+  stats_file = osp.join(data_dir, 'stats.txt')
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
@@ -113,7 +114,7 @@ data_transform = transforms.Compose([
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 
 # read mean and stdev for un-normalizing predictions
-if args.dataset == '7Scenes' or 'Cambridge':
+if args.dataset == '7Scenes' or args.dataset =='Cambridge':
   pose_stats_file = osp.join(data_dir, args.scene, 'pose_stats.txt')
 else:
   pose_stats_file = osp.join(data_dir, 'pose_stats.txt')
@@ -182,7 +183,7 @@ for batch_idx, (data, target) in enumerate(loader):
     idx = [batch_idx]
   idx = idx[len(idx) // 2]
   
-  if args.dataset == 'AachenDayNight' or 'Cambridge':
+  if args.dataset == 'AachenDayNight' or args.dataset =='Cambridge':
     data = data[0]
   # output : 1 x 6 or 1 x STEPS x 6
   _, output = step_feedfwd(data, model, CUDA, train=False)
