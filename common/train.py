@@ -14,10 +14,29 @@ from visdom import Visdom
 from common import Logger
 
 import torch
+import torch.nn as nn
 import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 import torch.cuda
 from torch.autograd import Variable
+
+from AdaIN import net
+from AdaIN.function import adaptive_instance_normalization
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+decoder = net.decoder
+vgg = net.vgg
+
+decoder.eval()
+vgg.eval()
+
+decoder.load_state_dict(torch.load('../AdaIN/models/decoder.pth'))
+vgg.load_state_dict(torch.load('../AdaIN/models/vgg_normalised.pth'))
+vgg = nn.Sequential(*list(vgg.children())[:31])
+
+vgg.to(device)
+
+decoder.to(device)
 
 def load_state_dict(model, state_dict):
   """
@@ -63,7 +82,7 @@ def safe_collate(batch):
 
 class Trainer(object):
   def __init__(self, model, optimizer, train_criterion, config_file, experiment,
-      train_dataset, val_dataset, device, checkpoint_file=None,
+      train_dataset, val_dataset, device, checkpoint_file=None, alpha=1,
       resume_optim=False, val_criterion=None,visdom_server='http://localhost', visdom_port=8097):
     """
     General purpose training script
@@ -86,6 +105,7 @@ class Trainer(object):
       self.val_criterion = self.train_criterion
     else:
       self.val_criterion = val_criterion
+    self.alpha = alpha
     self.experiment = experiment
     self.optimizer = optimizer
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
@@ -351,13 +371,15 @@ class Trainer(object):
           end = time.time()
           val_data_time = Logger.AverageMeter()
           for batch_idx, (data, target) in enumerate(self.val_loader):
-            
+
+            imgs = data[0]
+
             val_data_time.update(time.time() - end)
             
             kwargs = dict(target=target, criterion=self.val_criterion,
               optim=self.optimizer, train=False)
-          
-            loss, _ = step_feedfwd(data, self.model, self.config['cuda'],
+            end = time.time()
+            loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
               **kwargs)
 
             val_loss.update(loss)
@@ -367,7 +389,7 @@ class Trainer(object):
               print('Val {:s}: Epoch {:d}\t' \
                     'Batch {:d}/{:d}\t' \
                     'Data time {:.4f} ({:.4f})\t' \
-                    'Batch time {:.4f} ({:.4f})\t' \
+                    'Step time {:.4f} ({:.4f})\t' \
                     'Loss {:f}' \
                 .format(self.experiment, epoch, batch_idx, len(self.val_loader)-1,
                 val_data_time.val, val_data_time.avg, val_batch_time.val,
@@ -406,17 +428,29 @@ class Trainer(object):
         for batch_idx, (data, target) in enumerate(self.train_loader):
           train_data_time.update(time.time() - end)
           # update batch
-          
+          real = data[0]
+          style = data[1]
+          style_indc = data[2].squeeze(1)
+          if sum(style_indc == 1) > 0:
+              with torch.no_grad():
+                  assert (0.0 <= self.alpha <= 1.0)
+                  content_f = vgg(real[style_indc == 1].cuda())
+                  style_f = vgg(style[style_indc == 1].cuda())
+                  feat = adaptive_instance_normalization(content_f, style_f)
+                  feat = feat * self.alpha + content_f * (1 - self.alpha)
+                  stylized = decoder(feat)
+                  real[style_indc == 1] = stylized.cpu()
+
           kwargs = dict(target=target, criterion=self.train_criterion,
             optim=self.optimizer, train=True,
             max_grad_norm=self.config['max_grad_norm'])
 
           #from common.vis_utils import show_batch, show_stereo_batch
           #from torchvision.utils import make_grid
-          #show_batch(make_grid(data, nrow=2, padding=5, normalize=True))
+          #show_batch(make_grid(real, nrow=2, padding=5, normalize=True))
           #sys.exit(-1)
-
-          loss, _ = step_feedfwd(data, self.model, self.config['cuda'],
+          end = time.time()
+          loss, _ = step_feedfwd(real, self.model, self.config['cuda'],
             **kwargs)
           
           train_batch_time.update(time.time() - end)
@@ -427,7 +461,7 @@ class Trainer(object):
             print('Train {:s}: Epoch {:d}\t' \
                   'Batch {:d}/{:d}\t' \
                   'Data Time {:.4f} ({:.4f})\t' \
-                  'Batch Time {:.4f} ({:.4f})\t' \
+                  'Step Time {:.4f} ({:.4f})\t' \
                   'Loss {:f}\t' \
                   'lr: {:f}'.\
               format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,

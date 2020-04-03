@@ -204,7 +204,7 @@ if det_seed >= 0:
   experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed) 
 experiment_name += args.suffix
 trainer = Trainer(model, optimizer, train_criterion, args.config_file,
-                  experiment_name, train_set, val_set, device=args.device,
+                  experiment_name, train_set, val_set, alpha=args.alpha,device=args.device,
                   checkpoint_file=args.checkpoint,
                   resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
 lstm = args.model == 'vidloc'

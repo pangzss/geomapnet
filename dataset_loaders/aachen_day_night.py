@@ -50,7 +50,7 @@ class Sample:
 
 class AachenDayNight(data.Dataset):
     def __init__(self, data_path, train,skip_images=False,real=False,transform=None, 
-                target_transform=None, style_dir = None,real_prob = 100, alpha=1.0,
+                target_transform=None, style_dir = None,real_prob = 100,
                 train_split=20,seed=7,scene=None):
         np.random.seed(seed)
         self.data_path = data_path
@@ -58,9 +58,8 @@ class AachenDayNight(data.Dataset):
         #
         self.real_prob = real_prob
         self.style_dir = style_dir
-        self.alpha = alpha
         self.available_styles = os.listdir(style_dir) if self.style_dir is not None else None
-        print('real_prob: {}.\nstyle_dir: {}'.format(self.real_prob,self.style_dir))
+        print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.style_dir)))
         #
         self.skip_images = skip_images
         self.train_split = train_split
@@ -153,11 +152,6 @@ class AachenDayNight(data.Dataset):
         img = None
         while img is None:
             img = load_image(self.images[index].path)
-            #if self.num_styles != 0:
-            #    which_style = np.random.randint(low=0,high=self.num_styles,size=1)
-            #    styl_img = load_image(self.images[index].stylized[which_style[0]])
-            #else:
-            #    styl_img = None
             pose = self.images[index].pose
             index += 1
         index -= 1
@@ -173,18 +167,28 @@ class AachenDayNight(data.Dataset):
             style = load_image(style_path)
         
             ## stylization
-            t_list = [t for t in self.transform.__dict__['transforms']]
-            assert isinstance(t_list[-1],transforms.Normalize), 'Please normalize the data'
-            t_norml = t_list[-1]
-            del t_list[-1]
+            t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \
+                                                                        or isinstance(t,transforms.CenterCrop) \
+                                                                        or isinstance(t,transforms.ToTensor) \
+                                                                        or isinstance(t,transforms.Normalize)]
 
+            #img_t = self.transform(img)
             img_t = self.transform(img)
-            style_t = self.transform(style)
+            style_t = style
+            for t in t_list:
+                if isinstance(t,transforms.ToTensor):
+                    if style_t.size[0] != img_t.shape[-1]:
+                        # in case CenterCrop is not contained in self.transform
+                        CenterCrop = transforms.CenterCrop(img_t.shape[-2:])
+                        style_t = CenterCrop(style_t)
+                style_t = t(style_t)
+            
+            return (img_t,style_t,torch.ones(1)),pose
         else:
             img_t = self.transform(img)
             style_t = img_t
             
-        return (img_t,style_t),pose
+            return (img_t,style_t,torch.zeros(1)),pose
 
 
     def __len__(self):
@@ -216,10 +220,14 @@ def main():
 
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
       std=[0.229, 0.224, 0.225])])
-    
+    inv_normalize = transforms.Normalize(
+     mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
+    std=[1/0.229, 1/0.224, 1/0.225]
+     )
+
     data_path = '../data/deepslam_data/AachenDayNight'
     train = True
-    dset = AachenDayNight(data_path, train,transform=transform,real_prob=10,style_dir='../data/style_selected',alpha=0.1)
+    dset = AachenDayNight(data_path, train,transform=transform,real_prob=50,style_dir='../data/style_selected')
     print('Loaded AachenDayNight training data, length = {:d}'.format(
     len(dset)))
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
@@ -227,20 +235,22 @@ def main():
     batch_count = 0
     N_batches = 2
     for batch in data_loader:
-
         real = batch[0][0]
         style = batch[0][1]
-        with torch.no_grad():
-            alpha = 0.5
-            assert (0.0 <= alpha <= 1.0)
-            content_f = vgg(real.cuda().unsqueeze(0))
-            style_f = vgg(style.cuda().unsqueeze(0))
-            feat = adaptive_instance_normalization(content_f, style_f)
-            feat = feat * alpha + content_f * (1 - alpha)
-            stylized = decoder(feat)
-            img = stylized
-        print('Minibatch {:d}'.format(batch_count))
-        show_batch(make_grid(img, nrow=2, padding=5, normalize=True))
+        style_indc = batch[0][2].squeeze(1)
+        if sum(style_indc == 1) > 0:
+            with torch.no_grad():
+                alpha = 0.5
+                assert (0.0 <= alpha <= 1.0)
+                content_f = vgg(real[style_indc == 1].cuda())
+                style_f = vgg(style[style_indc == 1].cuda())
+                feat = adaptive_instance_normalization(content_f, style_f)
+                feat = feat * alpha + content_f * (1 - alpha)
+                stylized = decoder(feat)
+                real[style_indc == 1] = stylized.cpu()
+            
+
+        show_batch(make_grid(real, nrow=2, padding=5, normalize=True))
         
         pose = batch[1]
         

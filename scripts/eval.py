@@ -181,7 +181,8 @@ for batch_idx, (data, target) in enumerate(loader):
     idx = [batch_idx]
   idx = idx[len(idx) // 2]
   
-  
+  if args.dataset == 'AachenDayNight':
+    data = data[0]
   # output : 1 x 6 or 1 x STEPS x 6
   _, output = step_feedfwd(data, model, CUDA, train=False)
   s = output.size()
