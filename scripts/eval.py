@@ -31,7 +31,7 @@ parser = argparse.ArgumentParser(description='Evaluation script for PoseNet and'
                                              'MapNet variants')
 # modeified by pang 
 parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight',
-                                                'CambridgeLandmarks','stylized'),
+                                                'Cambridge'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
@@ -95,10 +95,10 @@ else:
 
 
 data_dir = osp.join('..', 'data', args.dataset)
-if args.dataset == '7Scenes':
+if args.dataset == '7Scenes' or 'Cambridge':
   stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 else:
-  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(0))
+  stats_file = osp.join(data_dir, 'stats.txt'.format(0))
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
@@ -113,7 +113,7 @@ data_transform = transforms.Compose([
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 
 # read mean and stdev for un-normalizing predictions
-if args.dataset == '7Scenes':
+if args.dataset == '7Scenes' or 'Cambridge':
   pose_stats_file = osp.join(data_dir, args.scene, 'pose_stats.txt')
 else:
   pose_stats_file = osp.join(data_dir, 'pose_stats.txt')
@@ -133,11 +133,8 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph:
     assert real
     kwargs = dict(kwargs, vo_lib=vo_lib)
   if args.dataset == 'AachenDayNight':
-    vo_func = calc_vos_safe_fc if fc_vos else calc_vos_safe
-    data_set = MF(dataset=args.dataset, steps=steps, skip=skip, real=real,
-                  variable_skip=variable_skip, include_vos=args.pose_graph,
-                  vo_func=vo_func, no_duplicates=False, **kwargs)
-    L = len(data_set.dset)
+    NotImplementedError
+    
 elif args.dataset == '7Scenes':
   from dataset_loaders.seven_scenes import SevenScenes
   data_set = SevenScenes(**kwargs)
@@ -149,6 +146,10 @@ elif args.dataset == 'RobotCar':
 elif args.dataset == 'AachenDayNight':
   from dataset_loaders.aachen_day_night import AachenDayNight
   data_set = AachenDayNight(**kwargs)
+  L = len(data_set)
+elif args.dataset == 'Cambridge':
+  from dataset_loaders.cambridge import Cambridge
+  data_set = Cambridge(**kwargs)
   L = len(data_set)
 else:
   raise NotImplementedError
@@ -181,7 +182,7 @@ for batch_idx, (data, target) in enumerate(loader):
     idx = [batch_idx]
   idx = idx[len(idx) // 2]
   
-  if args.dataset == 'AachenDayNight':
+  if args.dataset == 'AachenDayNight' or 'Cambridge':
     data = data[0]
   # output : 1 x 6 or 1 x STEPS x 6
   _, output = step_feedfwd(data, model, CUDA, train=False)

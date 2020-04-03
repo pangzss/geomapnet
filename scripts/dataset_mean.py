@@ -14,14 +14,14 @@ import set_paths
 from dataset_loaders.seven_scenes import SevenScenes
 #from dataset_loaders.robotcar import RobotCar
 from dataset_loaders.aachen_day_night import AachenDayNight
+from dataset_loaders.cambridge import Cambridge
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from common.train import safe_collate
 
 parser = argparse.ArgumentParser(description='Dataset images statistics')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight','Cambridge'),
                     help='Dataset', required=True)
-parser.add_argument('--num_styles', type=int, default=0, help='number of styles per image')
 parser.add_argument('--scene', type=str,help='Scene name', required=False)
 args = parser.parse_args()
 
@@ -47,6 +47,9 @@ if args.dataset == '7Scenes':
 elif args.dataset == 'AachenDayNight':
   kwargs = dict(kwargs,num_styles=args.num_styles)
   dset = AachenDayNight(**kwargs)
+elif args.dataset == 'Cambridge':
+  kwargs = dict(kwargs)
+  dset = Cambridge(**kwargs)
 else:
   raise NotImplementedError
 
@@ -58,7 +61,7 @@ loader = DataLoader(dset, batch_size=batch_size, num_workers=num_workers,
       
 acc = np.zeros((3, crop_size[0], crop_size[1]))
 sq_acc = np.zeros((3, crop_size[0], crop_size[1]))
-if args.dataset != 'AachenDayNight':
+if args.dataset == '7Scenes':
   for batch_idx, (imgs, _) in enumerate(loader):
     imgs = imgs.numpy()
     acc += np.sum(imgs, axis=0)
@@ -68,22 +71,16 @@ if args.dataset != 'AachenDayNight':
       print('Accumulated {:d} / {:d}'.format(batch_idx*batch_size, len(dset)))
 else:
   for batch_idx, (imgs, _) in enumerate(loader):
-    real = imgs[0].numpy()
-    if args.num_styles != 0:
-      style = [imgs[1][i].numpy() for i in range(args.num_styles)]
-      style = np.concatenate(style,axis=0)
-      
-      imgs = np.concatenate((real,style),axis=0)
-    
-    else:
-      imgs = real
+    imgs = imgs[0].numpy()
     acc += np.sum(imgs, axis=0)
     sq_acc += np.sum(imgs**2, axis=0)
 
     if batch_idx % 50 == 0:
       print('Accumulated {:d} / {:d}'.format(batch_idx*batch_size, len(dset)))
 
-N = len(dset)*(args.num_styles+1) * acc.shape[1] * acc.shape[2]
+
+
+N = len(dset) * acc.shape[1] * acc.shape[2]
 
 mean_p = np.asarray([np.sum(acc[c]) for c in range(3)])
 mean_p /= N
@@ -95,9 +92,9 @@ std_p /= N
 std_p -= (mean_p ** 2)
 print('Std. pixel = ', std_p)
 
-if args.dataset == '7Scenes':
+if args.dataset == '7Scenes' or 'Cambridge':
   output_filename = osp.join('..', 'data', args.dataset, args.scene, 'stats.txt')
 else:
-  output_filename = osp.join('..', 'data', args.dataset, 'stats_{}_styles.txt'.format(args.num_styles))
+  output_filename = osp.join('..', 'data', args.dataset, 'stats.txt')
 np.savetxt(output_filename, np.vstack((mean_p, std_p)), fmt='%8.7f')
 print('{:s} written'.format(output_filename))

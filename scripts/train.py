@@ -24,7 +24,7 @@ from torchvision import transforms, models
 import random
 parser = argparse.ArgumentParser(description='Training script for PoseNet and'
                                              'MapNet variants')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight','Cambridge'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default = ' ', help='Scene name')
 parser.add_argument('--style_dir', type=str, help='the directory of style images')
@@ -127,10 +127,10 @@ optimizer = Optimizer(params=param_list, method=opt_method, base_lr=lr,
   weight_decay=weight_decay, **optim_config)
 
 data_dir = osp.join('..', 'data', args.dataset)
-if args.dataset == '7Scenes':
+if args.dataset == '7Scenes' or 'Cambridge':
   stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 else:
-  stats_file = osp.join(data_dir, 'stats_{}_styles.txt'.format(0))
+  stats_file = osp.join(data_dir, 'stats.txt'.format(0))
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
@@ -167,6 +167,12 @@ if args.model == 'posenet':
     from dataset_loaders.aachen_day_night import AachenDayNight
     train_set = AachenDayNight(train=True, **kwargs)
     val_set = AachenDayNight(train=False, **kwargs)
+  elif args.dataset == 'Cambridge':
+    kwargs = dict(kwargs,real_prob=args.real_prob, style_dir = args.style_dir)
+    from dataset_loaders.cambridge import Cambridge
+    train_set = Cambridge(train=True, **kwargs)
+    val_set = Cambridge(train=False, **kwargs)
+  
   else:
     raise NotImplementedError
 elif args.model.find('mapnet') >= 0:
@@ -184,7 +190,7 @@ else:
 # trainer
 config_name = args.config_file.split('/')[-1]
 config_name = config_name.split('.')[0]
-if args.dataset == '7Scenes':
+if args.dataset == '7Scenes' or 'Cambridge':
   experiment_name = '{:s}_{:s}_{:s}_{:s}'.format(args.dataset, args.scene,
     args.model, config_name)
 else:
@@ -208,7 +214,7 @@ trainer = Trainer(model, optimizer, train_criterion, args.config_file,
                   checkpoint_file=args.checkpoint,
                   resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
 lstm = args.model == 'vidloc'
-if args.dataset == 'AachenDayNight':
+if args.dataset == 'AachenDayNight' or 'Cambridge':
   trainer.style_train_val()
 else:
   trainer.train_val(lstm=lstm)
