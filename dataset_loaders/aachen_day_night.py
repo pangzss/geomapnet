@@ -40,19 +40,7 @@ available_styles = [
 
 num_styles = len(available_styles)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-decoder = net.decoder
-vgg = net.vgg
 
-decoder.eval()
-vgg.eval()
-
-decoder.load_state_dict(torch.load('../AdaIN/models/decoder.pth'))
-vgg.load_state_dict(torch.load('../AdaIN/models/vgg_normalised.pth'))
-vgg = nn.Sequential(*list(vgg.children())[:31])
-
-vgg.to(device)
-decoder.to(device)
 
 class Sample:
     def __init__(self, path, pose):
@@ -190,27 +178,14 @@ class AachenDayNight(data.Dataset):
             t_norml = t_list[-1]
             del t_list[-1]
 
-            img_t = img
-            style_t = style
-            for t in t_list:
-                img_t = t(img_t)
-                style_t = t(style_t)
-           
-            with torch.no_grad():
-                assert (0.0 <= self.alpha <= 1.0)
-                content_f = vgg(img_t.cuda().unsqueeze(0))
-                style_f = vgg(style_t.cuda().unsqueeze(0))
-                feat = adaptive_instance_normalization(content_f, style_f)
-                feat = feat * self.alpha + content_f * (1 - self.alpha)
-                stylized = decoder(feat)
-                img_t = t_norml(stylized[0].cpu())
-            
-            return img_t,pose
-        else:
-            
             img_t = self.transform(img)
+            style_t = self.transform(style)
+        else:
+            img_t = self.transform(img)
+            style_t = img_t
+            
+        return (img_t,style_t),pose
 
-            return img_t,pose
 
     def __len__(self):
       return self.poses.shape[0]
@@ -219,7 +194,22 @@ def main():
     """
     visualizes the dataset
     """
-    num_workers = 0
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    decoder = net.decoder
+    vgg = net.vgg
+
+    decoder.eval()
+    vgg.eval()
+
+    decoder.load_state_dict(torch.load('../AdaIN/models/decoder.pth'))
+    vgg.load_state_dict(torch.load('../AdaIN/models/vgg_normalised.pth'))
+    vgg = nn.Sequential(*list(vgg.children())[:31])
+
+    vgg.to(device)
+
+    decoder.to(device)
+
+    num_workers = 2
     transform = transforms.Compose([
     transforms.Resize((224,224)),
     transforms.ToTensor(),
@@ -237,9 +227,20 @@ def main():
     batch_count = 0
     N_batches = 2
     for batch in data_loader:
-       
+
+        real = batch[0][0]
+        style = batch[0][1]
+        with torch.no_grad():
+            alpha = 0.5
+            assert (0.0 <= alpha <= 1.0)
+            content_f = vgg(real.cuda().unsqueeze(0))
+            style_f = vgg(style.cuda().unsqueeze(0))
+            feat = adaptive_instance_normalization(content_f, style_f)
+            feat = feat * alpha + content_f * (1 - alpha)
+            stylized = decoder(feat)
+            img = stylized
         print('Minibatch {:d}'.format(batch_count))
-        show_batch(make_grid(batch[0], nrow=2, padding=5, normalize=True))
+        show_batch(make_grid(img, nrow=2, padding=5, normalize=True))
         
         pose = batch[1]
         

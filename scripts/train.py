@@ -30,6 +30,7 @@ parser.add_argument('--scene', type=str, default = ' ', help='Scene name')
 parser.add_argument('--style_dir', type=str, help='the directory of style images')
 parser.add_argument('--real_prob', type=int, help='the prob of using real images')
 parser.add_argument('--alpha', type=float, help='intensity of stylization')
+parser.add_argument('--t_aug', action='store_true', help='use traditional augmentation')
 parser.add_argument('--config_file', type=str, help='configuration file')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
   help='Model to train')
@@ -195,6 +196,10 @@ experiment_name = '{:s}_{}_percent_real'.format(experiment_name,args.real_prob)
 #  experiment_name = '{:s}_learn_beta'.format(experiment_name)
 #if args.learn_gamma:
 #  experiment_name = '{:s}_learn_gamma'.format(experiment_name)
+if args.real_prob < 100:
+  experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha)
+if args.t_aug:
+  experiment_name = '{:s}_aug'.format(experiment_name)
 if det_seed >= 0:
   experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed) 
 experiment_name += args.suffix
