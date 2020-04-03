@@ -59,7 +59,8 @@ class AachenDayNight(data.Dataset):
         self.real_prob = real_prob
         self.style_dir = style_dir
         self.available_styles = os.listdir(style_dir) if self.style_dir is not None else None
-        print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.style_dir)))
+        print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.style_dir) \
+                                                                                                if self.style_dir is not None else 0))
         #
         self.skip_images = skip_images
         self.train_split = train_split
