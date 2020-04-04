@@ -133,8 +133,11 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph:
   if args.pose_graph:
     assert real
     kwargs = dict(kwargs, vo_lib=vo_lib)
-  if args.dataset == 'AachenDayNight':
-    NotImplementedError
+  vo_func = calc_vos_safe_fc if fc_vos else calc_vos_safe
+  data_set = MF(dataset=args.dataset, steps=steps, skip=skip, real=real,
+                variable_skip=variable_skip, include_vos=args.pose_graph,
+                vo_func=vo_func, no_duplicates=False, **kwargs)
+  L = len(data_set.dset)
     
 elif args.dataset == '7Scenes':
   from dataset_loaders.seven_scenes import SevenScenes
