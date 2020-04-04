@@ -203,7 +203,7 @@ experiment_name = '{:s}_{}_percent_real'.format(experiment_name,args.real_prob)
 #if args.learn_gamma:
 #  experiment_name = '{:s}_learn_gamma'.format(experiment_name)
 if args.real_prob < 100:
-  experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha)
+  experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha if args.alpha>=0 else 'Rand')
 if args.t_aug:
   experiment_name = '{:s}_aug'.format(experiment_name)
 if det_seed >= 0:

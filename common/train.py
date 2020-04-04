@@ -433,7 +433,8 @@ class Trainer(object):
           style_indc = data[2].squeeze(1)
           if sum(style_indc == 1) > 0:
               with torch.no_grad():
-                  assert (0.0 <= self.alpha <= 1.0)
+                  if self.alpha < 0:
+                    self.alpha = np.random.rand(1).item()
                   content_f = vgg(real[style_indc == 1].cuda())
                   style_f = vgg(style[style_indc == 1].cuda())
                   feat = adaptive_instance_normalization(content_f, style_f)
