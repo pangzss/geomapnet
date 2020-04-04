@@ -429,13 +429,15 @@ class Trainer(object):
           train_data_time.update(time.time() - end)
           # update batch
           real = data[0]
-          style = data[1]
+          content_style = data[1]
+          content = content_style[:,0]
+          style = content_style[:,1]
           style_indc = data[2].squeeze(1)
           if sum(style_indc == 1) > 0:
               with torch.no_grad():
                   if self.alpha < 0:
                     self.alpha = np.random.rand(1).item()
-                  content_f = vgg(real[style_indc == 1].cuda())
+                  content_f = vgg(content[style_indc == 1].cuda())
                   style_f = vgg(style[style_indc == 1].cuda())
                   feat = adaptive_instance_normalization(content_f, style_f)
                   feat = feat * self.alpha + content_f * (1 - self.alpha)

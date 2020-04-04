@@ -116,20 +116,25 @@ class Cambridge(data.Dataset):
             #img_t = self.transform(img)
             img_t = self.transform(img)
             style_t = style
+            content_t = img
             for t in t_list:
                 if isinstance(t,transforms.ToTensor):
                     if style_t.size[0] != img_t.shape[-1]:
                         # in case CenterCrop is not contained in self.transform
                         CenterCrop = transforms.CenterCrop(img_t.shape[-2:])
                         style_t = CenterCrop(style_t)
+                        content_t = CenterCrop(content_t)
                 style_t = t(style_t)
-            
-            return (img_t,style_t,torch.ones(1)),pose
+                content_t = t(content_t)
+            content_style = torch.stack([content_t,style_t],dim=0)
+            return (img_t,content_style,torch.ones(1)),pose
         else:
             img_t = self.transform(img)
             style_t = img_t
-            
-            return (img_t,style_t,torch.zeros(1)),pose
+            content_t = img_t
+            content_style = torch.stack([content_t,style_t],dim=0)
+            return (img_t,content_style,torch.zeros(1)),pose
+
     
     def __len__(self):
         return len(self.points)
@@ -178,13 +183,15 @@ def main():
     N_batches = 2
     for batch in data_loader:
         real = batch[0][0]
-        style = batch[0][1]
+        content_style = batch[0][1]
+        content = content_style[:,0]
+        style = content_style[:,1]
         style_indc = batch[0][2].squeeze(1)
         if sum(style_indc == 1) > 0:
             with torch.no_grad():
                 alpha = 0.5
                 assert (0.0 <= alpha <= 1.0)
-                content_f = vgg(real[style_indc == 1].cuda())
+                content_f = vgg(content[style_indc == 1].cuda())
                 style_f = vgg(style[style_indc == 1].cuda())
                 feat = adaptive_instance_normalization(content_f, style_f)
                 feat = feat * alpha + content_f * (1 - alpha)
