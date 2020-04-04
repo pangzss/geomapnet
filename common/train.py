@@ -373,7 +373,7 @@ class Trainer(object):
           for batch_idx, (data, target) in enumerate(self.val_loader):
 
             imgs = data[0]
-
+    
             val_data_time.update(time.time() - end)
             
             kwargs = dict(target=target, criterion=self.val_criterion,
@@ -428,11 +428,13 @@ class Trainer(object):
         for batch_idx, (data, target) in enumerate(self.train_loader):
           train_data_time.update(time.time() - end)
           # update batch
-          real = data[0]
+          data_shape = data[0].shape
+          to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
+          real = data[0].reshape(to_shape)
           content_style = data[1]
-          content = content_style[:,0]
-          style = content_style[:,1]
-          style_indc = data[2].squeeze(1)
+          content = content_style[:,0].reshape(to_shape)
+          style = content_style[:,1].reshape(to_shape)
+          style_indc = data[2].view(-1)
           if sum(style_indc == 1) > 0:
               with torch.no_grad():
                   if self.alpha < 0:
@@ -443,15 +445,18 @@ class Trainer(object):
                   feat = feat * self.alpha + content_f * (1 - self.alpha)
                   stylized = decoder(feat)
                   real[style_indc == 1] = stylized.cpu()
+  
+          #from common.vis_utils import show_batch, show_stereo_batch
+          #from torchvision.utils import make_grid
+          #show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
+          #sys.exit(-1)
 
+          real = real.reshape(data_shape)
           kwargs = dict(target=target, criterion=self.train_criterion,
             optim=self.optimizer, train=True,
             max_grad_norm=self.config['max_grad_norm'])
 
-          #from common.vis_utils import show_batch, show_stereo_batch
-          #from torchvision.utils import make_grid
-          #show_batch(make_grid(real, nrow=2, padding=5, normalize=True))
-          #sys.exit(-1)
+      
           end = time.time()
           loss, _ = step_feedfwd(real, self.model, self.config['cuda'],
             **kwargs)

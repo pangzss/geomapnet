@@ -182,6 +182,7 @@ elif args.model.find('mapnet') >= 0:
     train_set = MFOnline(vo_lib=vo_lib, gps_mode=(vo_lib=='gps'), **kwargs)
     val_set = None
   else:
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
     train_set = MF(train=True, real=real, **kwargs)
     val_set = MF(train=False, real=real, **kwargs)
 else:

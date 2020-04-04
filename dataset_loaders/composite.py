@@ -39,8 +39,7 @@ class MF(data.Dataset):
     self.train = kwargs['train']
     self.vo_func = kwargs.pop('vo_func', calc_vos_simple)
     self.no_duplicates = no_duplicates
-    if dataset == 'AachenDayNight':
-      self.num_styles = kwargs['num_styles']
+  
     if dataset == '7Scenes':
       from .seven_scenes import SevenScenes
       self.dset = SevenScenes(*args, real=self.real, **kwargs)
@@ -55,8 +54,10 @@ class MF(data.Dataset):
           **kwargs)
     elif dataset == 'AachenDayNight':
       from .aachen_day_night import AachenDayNight
-      self.dset = AachenDayNight(*args, 
-                          real=self.real, **kwargs)
+      self.dset = AachenDayNight(*args, **kwargs)
+    elif dataset == 'Cambridge':
+      from .cambridge import Cambridge
+      self.dset = Cambridge(*args, **kwargs)
 
     else:
       raise NotImplementedError
@@ -77,6 +78,7 @@ class MF(data.Dataset):
     offsets = offsets.astype(np.int)
     idx = index + offsets
     idx = np.minimum(np.maximum(idx, 0), len(self.dset)-1)
+   
     assert np.all(idx >= 0), '{:d}'.format(index)
     assert np.all(idx < len(self.dset))
     return idx
@@ -92,7 +94,10 @@ class MF(data.Dataset):
     clip  = [self.dset[i] for i in idx]
 
     real_imgs  = torch.stack([c[0][0] for c in clip], dim=0)
-    style_imgs = [torch.stack([c[0][1][k] for c in clip], dim=0) for k in range(self.num_styles)]
+    content_imgs = torch.stack([c[0][1][0] for c in clip], dim=0)
+    style_imgs =  torch.stack([c[0][1][1] for c in clip], dim=0)
+    style_idces = torch.stack([c[0][2] for c in clip], dim=0)
+
     poses = torch.stack([c[1] for c in clip], dim=0)
     if self.include_vos:
       # vos = calc_vos_simple(poses.unsqueeze(0))[0] if self.train else \
@@ -103,7 +108,7 @@ class MF(data.Dataset):
         poses = torch.stack([c[1] for c in clip], dim=0)
       poses = torch.cat((poses, vos), dim=0)
 
-    return (real_imgs,style_imgs), poses
+    return (real_imgs,torch.stack([content_imgs,style_imgs],dim=0),style_idces), poses
 
   def __len__(self):
     L = len(self.dset)
