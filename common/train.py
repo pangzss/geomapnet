@@ -245,8 +245,10 @@ class Trainer(object):
     :param lstm: whether the model is an LSTM
     :return: 
     """
+    val_loss_list = []
     for epoch in range(self.start_epoch, self.config['n_epochs']):
       # VALIDATION
+
       if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
                                       (epoch == self.config['n_epochs']-1)) :
         val_batch_time = Logger.AverageMeter()
@@ -266,6 +268,8 @@ class Trainer(object):
               **kwargs)
 
           val_loss.update(loss)
+
+
           val_batch_time.update(time.time() - end)
 
           if batch_idx % self.config['print_freq'] == 0:
@@ -284,7 +288,7 @@ class Trainer(object):
 
         print('Val {:s}: Epoch {:d}, val_loss {:f}'.format(self.experiment,
           epoch, val_loss.avg))
-
+        val_loss_list.append(val_loss.avg)
         if self.config['log_visdom']:
           self.vis.line(X=np.asarray([epoch]),
             Y=np.asarray([val_loss.avg]), win=self.val_loss_win, name='val_loss',
@@ -293,9 +297,19 @@ class Trainer(object):
 
       # SAVE CHECKPOINT
       if epoch % self.config['snapshot'] == 0:
-        self.save_checkpoint(epoch)
-        print('Epoch {:d} checkpoint saved for {:s}'.\
-          format(epoch, self.experiment))
+        if self.config['val_freq'] == self.config['snapshot']:
+          if val_loss_list[-1] < min(val_loss_list[:-1]):
+            self.save_checkpoint(epoch)
+            print('Epoch {:d} checkpoint saved for {:s}'.\
+               format(epoch, self.experiment))
+          elif epoch == self.config['n_epochs'] - 1:
+            self.save_checkpoint(epoch)
+            print('Epoch {:d} checkpoint saved for {:s}'.\
+              format(epoch, self.experiment))
+        else:
+          self.save_checkpoint(epoch)
+          print('Epoch {:d} checkpoint saved for {:s}'.\
+           format(epoch, self.experiment))
 
       # ADJUST LR
       lr = self.optimizer.adjust_lr(epoch)
@@ -361,6 +375,7 @@ class Trainer(object):
       :param lstm: whether the model is an LSTM
       :return: 
       """
+      val_loss_list = []
       for epoch in range(self.start_epoch, self.config['n_epochs']):
         # VALIDATION
         if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
@@ -383,6 +398,7 @@ class Trainer(object):
               **kwargs)
 
             val_loss.update(loss)
+            
             val_batch_time.update(time.time() - end)
 
             if batch_idx % self.config['print_freq'] == 0:
@@ -401,17 +417,28 @@ class Trainer(object):
 
           print('Val {:s}: Epoch {:d}, val_loss {:f}'.format(self.experiment,
             epoch, val_loss.avg))
-
+          val_loss_list.append(val_loss.avg)
           if self.config['log_visdom']:
             self.vis.line(X=np.asarray([epoch]),
               Y=np.asarray([val_loss.avg]), win=self.val_loss_win, name='val_loss',
               update='append', env=self.vis_env)
             self.vis.save(envs=[self.vis_env])
 
-        # SAVE CHECKPOINT
-        if (epoch % self.config['snapshot'] == 0) and epoch != 0:
-          self.save_checkpoint(epoch)
-          print('Epoch {:d} checkpoint saved for {:s}'.\
+        
+         # SAVE CHECKPOINT
+        if epoch % self.config['snapshot'] == 0 and epoch != 0:
+          if self.config['val_freq'] == self.config['snapshot']:
+            if val_loss_list[-1] < min(val_loss_list[:-1]):
+              self.save_checkpoint(epoch)
+              print('Epoch {:d} checkpoint saved for {:s}'.\
+                format(epoch, self.experiment))
+            elif epoch == self.config['n_epochs'] - 1:
+              self.save_checkpoint(epoch)
+              print('Epoch {:d} checkpoint saved for {:s}'.\
+                format(epoch, self.experiment))
+          else:
+            self.save_checkpoint(epoch)
+            print('Epoch {:d} checkpoint saved for {:s}'.\
             format(epoch, self.experiment))
 
         # ADJUST LR
