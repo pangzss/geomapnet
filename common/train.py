@@ -82,7 +82,7 @@ def safe_collate(batch):
 
 class Trainer(object):
   def __init__(self, model, optimizer, train_criterion, config_file, experiment,
-      train_dataset, val_dataset, device, checkpoint_file=None, alpha=1,
+      train_dataset, val_dataset, device, seed=0, checkpoint_file=None, alpha=1,
       resume_optim=False, val_criterion=None,visdom_server='http://localhost', visdom_port=8097):
     """
     General purpose training script
@@ -122,7 +122,7 @@ class Trainer(object):
     self.config['batch_size'] = section.getint('batch_size')
     self.config['do_val'] = section.getboolean('do_val')
     self.config['shuffle'] = section.getboolean('shuffle')
-    self.config['seed'] = section.getint('seed')
+    self.config['seed'] = section.getint('seed',seed)
     self.config['num_workers'] = section.getint('num_workers')
     self.config['snapshot'] = section.getint('snapshot')
     self.config['val_freq'] = section.getint('val_freq')
@@ -426,7 +426,7 @@ class Trainer(object):
 
         
          # SAVE CHECKPOINT
-        if epoch % self.config['snapshot'] == 0 and epoch != 0:
+        if epoch % self.config['snapshot'] == 0 and epoch >= 100:
           if self.config['val_freq'] == self.config['snapshot']:
             if val_loss_list[-1] < min(val_loss_list[:-1]):
               self.save_checkpoint(epoch)
@@ -473,10 +473,10 @@ class Trainer(object):
                   stylized = decoder(feat)
                   real[style_indc == 1] = stylized.cpu()
   
-          #from common.vis_utils import show_batch, show_stereo_batch
-          #from torchvision.utils import make_grid
-          #show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
-          #sys.exit(-1)
+         # from common.vis_utils import show_batch, show_stereo_batch
+         # from torchvision.utils import make_grid
+         # show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
+         # sys.exit(-1)
 
           real = real.reshape(data_shape)
           kwargs = dict(target=target, criterion=self.train_criterion,
