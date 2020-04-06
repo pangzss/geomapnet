@@ -40,6 +40,7 @@ parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
        'evluation process is the same and they only differ in the input weights'
        'file')
 parser.add_argument('--device', type=str, default='0', help='GPU device(s)')
+parser.add_argument('--init_seed', type=int, help='seed')
 parser.add_argument('--config_file', type=str, help='configuration file')
 parser.add_argument('--val', action='store_true', help='Plot graph for val')
 parser.add_argument('--output_dir', type=str, default=None,
@@ -53,7 +54,8 @@ if 'CUDA_VISIBLE_DEVICES' not in os.environ:
 settings = configparser.ConfigParser()
 with open(args.config_file, 'r') as f:
   settings.read_file(f)
-seed = settings.getint('training', 'seed')
+#seed = settings.getint('training', 'seed')
+seed = args.init_seed
 section = settings['hyperparameters']
 dropout = section.getfloat('dropout')
 if (args.model.find('mapnet') >= 0) or args.pose_graph:

@@ -128,7 +128,7 @@ class Trainer(object):
     self.config['val_freq'] = section.getint('val_freq')
     self.config['cuda'] = torch.cuda.is_available()
     self.config['max_grad_norm'] = section.getfloat('max_grad_norm', 0)
-
+    self.config['patience'] = section.getint('patience')
 
     section = settings['logging']
     self.config['log_visdom'] = section.getboolean('visdom')
@@ -179,6 +179,7 @@ class Trainer(object):
     for k, v in list(self.config.items()):
       print('{:s}: {:s}'.format(k, str(v)))
     print('Using GPU {:s} / {:d}'.format(device, torch.cuda.device_count()))
+    print('seed: {}'.format(self.config['seed']))
     print('---------------------------------------')
 
     # set random seed
@@ -302,6 +303,7 @@ class Trainer(object):
             self.save_checkpoint(epoch)
             print('Epoch {:d} checkpoint saved for {:s}'.\
                format(epoch, self.experiment))
+
           elif epoch == self.config['n_epochs'] - 1:
             self.save_checkpoint(epoch)
             print('Epoch {:d} checkpoint saved for {:s}'.\
@@ -376,10 +378,13 @@ class Trainer(object):
       :return: 
       """
       val_loss_list = []
+      best_val = 0
+      early_stop_counter = 0
       for epoch in range(self.start_epoch, self.config['n_epochs']):
         # VALIDATION
         if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
                                         (epoch == self.config['n_epochs']-1)) :
+                      
           val_batch_time = Logger.AverageMeter()
           val_loss = Logger.AverageMeter()
           self.model.eval()
@@ -426,9 +431,16 @@ class Trainer(object):
 
         
          # SAVE CHECKPOINT
-        if epoch % self.config['snapshot'] == 0 and epoch >= 100:
+        if epoch % self.config['snapshot'] == 0 and len(val_loss_list)>=2:
+          
           if self.config['val_freq'] == self.config['snapshot']:
-            if val_loss_list[-1] < min(val_loss_list[:-1]):
+            curr_val = val_loss_list[-1]
+            past_best = min(val_loss_list[:-1])
+            if curr_val < past_best:
+              #early stop
+              if epoch > 300:
+                early_stop_counter = 0
+                print(f'Validation loss decreased ({past_best:.6f} --> {curr_val:.6f}). Zero counter and save model ...')
               self.save_checkpoint(epoch)
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
@@ -436,12 +448,19 @@ class Trainer(object):
               self.save_checkpoint(epoch)
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
-          else:
+            elif epoch > 300:
+              early_stop_counter += self.config['val_freq']
+              print('Early stop counter value: {}'.format(early_stop_counter))
+              if early_stop_counter == self.config['patience']:
+                print('Val error never decreases in {} epochs. Exit training.'.format(early_stop_counter))
+                sys.exit(-1)
+          elif epoch != 0 :
             self.save_checkpoint(epoch)
             print('Epoch {:d} checkpoint saved for {:s}'.\
             format(epoch, self.experiment))
 
         # ADJUST LR
+  
         lr = self.optimizer.adjust_lr(epoch)
         if self.config['log_visdom']:
           self.vis.line(X=np.asarray([epoch]), Y=np.asarray([np.log10(lr)]),
