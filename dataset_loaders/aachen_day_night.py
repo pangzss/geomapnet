@@ -186,13 +186,13 @@ class AachenDayNight(data.Dataset):
                         content_t = CenterCrop(content_t)
                 style_t = t(style_t)
                 content_t = t(content_t)
-            content_style = torch.cat([content_t,style_t],dim=0)
+            content_style = torch.stack([content_t,style_t],dim=0)
             return (img_t,content_style,torch.ones(1)),pose
         else:
             img_t = self.transform(img)
             style_t = img_t
             content_t = img_t
-            content_style = torch.cat([content_t,style_t],dim=0)
+            content_style = torch.stack([content_t,style_t],dim=0)
             return (img_t,content_style,torch.zeros(1)),pose
 
 

@@ -118,12 +118,12 @@ class Cambridge(data.Dataset):
             style_t = style
             content_t = img
             for t in t_list:
-                if isinstance(t,transforms.ToTensor):
-                    if style_t.size[0] != img_t.shape[-1]:
+                #if isinstance(t,transforms.ToTensor):
+                #    if style_t.size[0] != img_t.shape[-1]:
                         # in case CenterCrop is not contained in self.transform
-                        CenterCrop = transforms.CenterCrop(img_t.shape[-2:])
-                        style_t = CenterCrop(style_t)
-                        content_t = CenterCrop(content_t)
+                #        CenterCrop = transforms.CenterCrop(img_t.shape[-2:])
+                #        style_t = CenterCrop(style_t)
+                #        content_t = CenterCrop(content_t)
                 style_t = t(style_t)
                 content_t = t(content_t)
             content_style = torch.stack([content_t,style_t],dim=0)

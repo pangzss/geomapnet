@@ -132,7 +132,6 @@ crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 # transformers
 tforms = [transforms.Resize(resize)]
-tforms.append(transforms.CenterCrop(crop_size))
 #tforms.append(transforms.CenterCrop(crop_size))
 if color_jitter > 0:
   assert color_jitter <= 1.0

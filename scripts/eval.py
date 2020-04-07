@@ -110,7 +110,7 @@ resize = int(max(crop_size))
 # transformer
 data_transform = transforms.Compose([
   transforms.Resize(resize),
-  transforms.CenterCrop(crop_size),
+  #transforms.CenterCrop(crop_size),
   transforms.ToTensor(),
   transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1]))])
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
@@ -190,6 +190,7 @@ for batch_idx, (data, target) in enumerate(loader):
   
   if args.dataset == 'AachenDayNight' or args.dataset =='Cambridge':
     data = data[0]
+
   # output : 1 x 6 or 1 x STEPS x 6
   _, output = step_feedfwd(data, model, CUDA, train=False)
   s = output.size()

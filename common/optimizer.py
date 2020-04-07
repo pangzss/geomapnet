@@ -15,6 +15,7 @@ class Optimizer:
     self.base_lr = base_lr
     self.decay = False
     self.schedule = False
+    self.epochs = None
     if 'lr_decay' in kwargs:
         self.decay = True
         self.lr_decay = kwargs.pop('lr_decay')
@@ -50,9 +51,10 @@ class Optimizer:
 
       lr = self.base_lr * decay_factor
     elif self.schedule:
-
-      lr = self.scheduler.get_lr(epoch if epoch < self.epochs else self.epochs-1)
-
+      if self.epochs is not None:
+        lr = self.scheduler.get_lr(epoch if epoch < self.epochs else self.epochs-1)
+      else:
+        lr = self.scheduler.get_lr(epoch)
 
 
     for param_group in self.learner.param_groups:
