@@ -440,7 +440,7 @@ class Trainer(object):
               #early stop
               if epoch > 300:
                 early_stop_counter = 0
-                print(f'Validation loss decreased ({past_best:.6f} --> {curr_val:.6f}). Zero counter and save model ...')
+              print(f'Validation loss decreased ({past_best:.6f} --> {curr_val:.6f}). Zero counter and save model ...')
               self.save_checkpoint(epoch)
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
