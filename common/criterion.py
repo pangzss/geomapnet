@@ -106,7 +106,7 @@ class MapNetCriterion(nn.Module):
 
     # total loss
     loss = abs_loss + vo_loss
-    return loss
+    return abs_loss,vo_loss
 
 class MapNetOnlineCriterion(nn.Module):
   def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,

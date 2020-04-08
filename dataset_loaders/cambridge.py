@@ -115,8 +115,8 @@ class Cambridge(data.Dataset):
 
             #img_t = self.transform(img)
             img_t = self.transform(img)
-            style_t = style
-            content_t = img
+            style_t = style#self.transform(style)
+            content_t = img_t
             for t in t_list:
                 #if isinstance(t,transforms.ToTensor):
                 #    if style_t.size[0] != img_t.shape[-1]:
@@ -125,7 +125,7 @@ class Cambridge(data.Dataset):
                 #        style_t = CenterCrop(style_t)
                 #        content_t = CenterCrop(content_t)
                 style_t = t(style_t)
-                content_t = t(content_t)
+                #content_t = t(content_t)
             content_style = torch.stack([content_t,style_t],dim=0)
             return (img_t,content_style,torch.ones(1)),pose
         else:

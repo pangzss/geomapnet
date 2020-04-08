@@ -10,7 +10,7 @@ import time
 import configparser
 import numpy as np
 from visdom import Visdom
-
+from shutil import copyfile
 from common import Logger
 
 import torch
@@ -135,8 +135,14 @@ class Trainer(object):
     self.config['print_freq'] = section.getint('print_freq')
 
     self.logdir = osp.join(os.getcwd(), 'logs', self.experiment)
-    if not osp.isdir(self.logdir):
-      os.makedirs(self.logdir)
+    i = 0
+    while osp.isdir(self.logdir):
+      i += 1
+      temp = self.experiment + '_version_{}'.format(i)
+      self.logdir = osp.join(os.getcwd(), 'logs', temp)
+    self.experiment = self.experiment + '_version_{}'.format(i)
+    os.makedirs(self.logdir)
+    copyfile(config_file, osp.join(self.logdir, 'config.ini'))
 
     if self.config['log_visdom']:
       # start plots
@@ -378,8 +384,8 @@ class Trainer(object):
       :return: 
       """
       val_loss_list = []
-      best_val = 0
       early_stop_counter = 0
+      saved_list = []
       for epoch in range(self.start_epoch, self.config['n_epochs']):
         # VALIDATION
         if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
@@ -399,9 +405,9 @@ class Trainer(object):
             kwargs = dict(target=target, criterion=self.val_criterion,
               optim=self.optimizer, train=False)
             end = time.time()
-            loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
+            a_loss,r_loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
               **kwargs)
-
+            loss = a_loss+r_loss
             val_loss.update(loss)
             
             val_batch_time.update(time.time() - end)
@@ -437,6 +443,11 @@ class Trainer(object):
             curr_val = val_loss_list[-1]
             past_best = min(val_loss_list[:-1])
             if curr_val < past_best:
+              saved_list.append(epoch)
+              if len(saved_list)>1 and epoch<300:
+                os.remove(os.path.join('logs',self.experiment,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
+                print('epoch_{}.pth.tar deleted.'.format(saved_list[0]))
+                del saved_list[0]
               #early stop
               if epoch > 300:
                 early_stop_counter = 0
@@ -568,7 +579,8 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
           target = target.cuda(non_blocking=True)
         target_var = Variable(target, requires_grad=False)
         with torch.set_grad_enabled(train):
-          loss = criterion(output, target_var)
+          abs_loss,vo_loss = criterion(output, target_var)
+          loss = abs_loss+vo_loss
         if train:
           # SGD step
           optim.learner.zero_grad()
@@ -576,7 +588,9 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
           if max_grad_norm > 0.0:
             torch.nn.utils.clip_grad_norm(model.parameters(), max_grad_norm)
           optim.learner.step()
-        return loss.item(), output
+          return loss.item(), output
+        else:
+          return abs_loss.item(),vo_loss.item(),output
       else:
         return 0, output
 

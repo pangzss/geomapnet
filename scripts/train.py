@@ -81,6 +81,12 @@ if args.model.find('++') >= 0:
 section = settings['training']
 #seed = section.getint('seed')
 seed = args.init_seed
+if seed >= 0:
+  #random.seed(seed)
+  torch.manual_seed(seed)
+  np.random.seed(seed)
+  torch.backends.cudnn.deterministic = True
+  torch.backends.cudnn.benchmark = False
 
 # model
 feature_extractor = models.resnet34(pretrained=True)
@@ -125,7 +131,7 @@ data_dir = osp.join('..', 'data', args.dataset)
 if args.dataset == '7Scenes' or args.dataset =='Cambridge':
   stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 else:
-  stats_file = osp.join(data_dir, 'stats.txt'.format(0))
+  stats_file = osp.join(data_dir, 'stats.txt')
 stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
