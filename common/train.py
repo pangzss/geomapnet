@@ -399,11 +399,17 @@ class Trainer(object):
           for batch_idx, (data, target) in enumerate(self.val_loader):
 
             imgs = data[0]
-    
+         
+            #from common.vis_utils import show_batch, show_stereo_batch
+            #from torchvision.utils import make_grid
+            #show_batch(make_grid(imgs.reshape(-1,3,256,455), nrow=6, padding=5, normalize=False))
+            #sys.exit(-1)
+
             val_data_time.update(time.time() - end)
             
             kwargs = dict(target=target, criterion=self.val_criterion,
               optim=self.optimizer, train=False)
+      
             end = time.time()
             a_loss,r_loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
               **kwargs)
@@ -429,13 +435,14 @@ class Trainer(object):
           print('Val {:s}: Epoch {:d}, val_loss {:f}'.format(self.experiment,
             epoch, val_loss.avg))
           val_loss_list.append(val_loss.avg)
+
           if self.config['log_visdom']:
             self.vis.line(X=np.asarray([epoch]),
               Y=np.asarray([val_loss.avg]), win=self.val_loss_win, name='val_loss',
               update='append', env=self.vis_env)
             self.vis.save(envs=[self.vis_env])
 
-        
+
          # SAVE CHECKPOINT
         if epoch % self.config['snapshot'] == 0 and len(val_loss_list)>=2:
           
@@ -545,7 +552,6 @@ class Trainer(object):
               self.vis.save(envs=[self.vis_env])
 
           end = time.time()
-
       # Save final checkpoint
       epoch = self.config['n_epochs']
       self.save_checkpoint(epoch)

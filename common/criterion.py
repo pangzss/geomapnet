@@ -82,6 +82,7 @@ class MapNetCriterion(nn.Module):
 
     # absolute pose loss
     s = pred.size()
+
     abs_loss =\
       torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],
                                             targ.view(-1, *s[2:])[:, :3]) + \
@@ -106,6 +107,7 @@ class MapNetCriterion(nn.Module):
 
     # total loss
     loss = abs_loss + vo_loss
+
     return abs_loss,vo_loss
 
 class MapNetOnlineCriterion(nn.Module):
