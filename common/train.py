@@ -134,13 +134,15 @@ class Trainer(object):
     self.config['log_visdom'] = section.getboolean('visdom')
     self.config['print_freq'] = section.getint('print_freq')
 
-    self.logdir = osp.join(os.getcwd(), 'logs', self.experiment)
+    
     i = 0
+    self.experiment = self.experiment + '_version_{}'.format(i)
+    self.logdir = osp.join(os.getcwd(), 'logs', self.experiment)
     while osp.isdir(self.logdir):
       i += 1
       temp = self.experiment + '_version_{}'.format(i)
       self.logdir = osp.join(os.getcwd(), 'logs', temp)
-    self.experiment = self.experiment + '_version_{}'.format(i)
+    
     os.makedirs(self.logdir)
     copyfile(config_file, osp.join(self.logdir, 'config.ini'))
 
@@ -413,7 +415,7 @@ class Trainer(object):
             end = time.time()
             a_loss,r_loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
               **kwargs)
-            loss = a_loss+r_loss
+            loss = a_loss
             val_loss.update(loss)
             
             val_batch_time.update(time.time() - end)
@@ -445,33 +447,36 @@ class Trainer(object):
 
          # SAVE CHECKPOINT
         if epoch % self.config['snapshot'] == 0 and len(val_loss_list)>=2:
-          
+          # when val_freq == snapshot, it means that we want to save the model when finding a good val
+          # when val_freq != snapshot, usually we do val and the saving randomly, and only refer to the model at
+          # the final epoch as the peneulmate version. 
           if self.config['val_freq'] == self.config['snapshot']:
             curr_val = val_loss_list[-1]
             past_best = min(val_loss_list[:-1])
             if curr_val < past_best:
+
               saved_list.append(epoch)
-              if len(saved_list)>1 and epoch<300:
+
+              if len(saved_list)>1:
                 os.remove(os.path.join('logs',self.experiment,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
                 print('epoch_{}.pth.tar deleted.'.format(saved_list[0]))
                 del saved_list[0]
+
               #early stop
-              if epoch > 300:
+              if epoch > 300 and self.patience > 0:
                 early_stop_counter = 0
               print(f'Validation loss decreased ({past_best:.6f} --> {curr_val:.6f}). Zero counter and save model ...')
               self.save_checkpoint(epoch)
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
-            elif epoch == self.config['n_epochs'] - 1:
-              self.save_checkpoint(epoch)
-              print('Epoch {:d} checkpoint saved for {:s}'.\
-                format(epoch, self.experiment))
-            elif epoch > 300:
+            
+            elif epoch > 300 and self.patience > 0:
               early_stop_counter += self.config['val_freq']
               print('Early stop counter value: {}'.format(early_stop_counter))
               if early_stop_counter == self.config['patience']:
                 print('Val error never decreases in {} epochs. Exit training.'.format(early_stop_counter))
                 sys.exit(-1)
+
           elif epoch != 0 :
             self.save_checkpoint(epoch)
             print('Epoch {:d} checkpoint saved for {:s}'.\
@@ -505,10 +510,13 @@ class Trainer(object):
                     self.alpha = np.random.rand(1).item()
                   content_f = vgg(content[style_indc == 1].cuda())
                   style_f = vgg(style[style_indc == 1].cuda())
+              
                   feat = adaptive_instance_normalization(content_f, style_f)
                   feat = feat * self.alpha + content_f * (1 - self.alpha)
                   stylized = decoder(feat)
-                  real[style_indc == 1] = stylized.cpu()
+                  # the output from the decoder gets padded, so only keep the portion that has
+                  # the same size as the original
+                  real[style_indc == 1] = stylized.cpu()[...,:real.shape[-2],:real.shape[-1]]
   
          # from common.vis_utils import show_batch, show_stereo_batch
          # from torchvision.utils import make_grid

@@ -124,8 +124,11 @@ class Cambridge(data.Dataset):
                 #        CenterCrop = transforms.CenterCrop(img_t.shape[-2:])
                 #        style_t = CenterCrop(style_t)
                 #        content_t = CenterCrop(content_t)
+                if isinstance(t,transforms.Resize):
+                    Resize = transforms.Resize(img_t.shape[-2:])
+                    style_t = Resize(style_t)
+                    continue
                 style_t = t(style_t)
-                #content_t = t(content_t)
             content_style = torch.stack([content_t,style_t],dim=0)
             return (img_t,content_style,torch.ones(1)),pose
         else:
