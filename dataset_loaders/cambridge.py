@@ -132,6 +132,7 @@ class Cambridge(data.Dataset):
             content_style = torch.stack([content_t,style_t],dim=0)
             return (img_t,content_style,torch.ones(1)),pose
         else:
+            
             img_t = self.transform(img)
             style_t = img_t
             content_t = img_t

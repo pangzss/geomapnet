@@ -402,10 +402,10 @@ class Trainer(object):
 
             imgs = data[0]
          
-            #from common.vis_utils import show_batch, show_stereo_batch
-            #from torchvision.utils import make_grid
-            #show_batch(make_grid(imgs.reshape(-1,3,256,455), nrow=6, padding=5, normalize=False))
-            #sys.exit(-1)
+            from common.vis_utils import show_batch, show_stereo_batch
+            from torchvision.utils import make_grid
+            show_batch(make_grid(imgs.reshape(-1,3,256,455), nrow=6, padding=5, normalize=True))
+            sys.exit(-1)
 
             val_data_time.update(time.time() - end)
             
