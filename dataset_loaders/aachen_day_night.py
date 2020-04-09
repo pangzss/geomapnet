@@ -90,9 +90,9 @@ class AachenDayNight(data.Dataset):
             c = [float(x) for x in pose_i[6:9]]
             pose = np.asarray(c+q)
             self.poses.append(pose)
-            path = pose_i[0].split('/')
-            path = os.path.join(self.data_path, path[0],'real',path[1])
-            
+            #path = pose_i[0].split('/')
+            #path = os.path.join(self.data_path, path[0],path[1])
+            path = os.path.join(self.data_path,pose_i[0])
             self.images.append(Sample(path,pose))
             '''
             if self.num_styles != 0:
@@ -143,6 +143,7 @@ class AachenDayNight(data.Dataset):
         selected_idces = self.train_idces if self.train else self.val_idces
         self.images = [self.images[i] for i in selected_idces]
         self.poses = self.poses[selected_idces]
+    
         for i in range(len(self.images)):
             self.images[i].pose = self.poses[i]
         self.gt_idx = np.stack(selected_idces)
@@ -231,7 +232,7 @@ def main():
      )
 
     data_path = '../data/deepslam_data/AachenDayNight'
-    train = True
+    train = False
     dset = AachenDayNight(data_path, train,transform=transform,real_prob=50,style_dir='../data/style_selected')
     print('Loaded AachenDayNight training data, length = {:d}'.format(
     len(dset)))
