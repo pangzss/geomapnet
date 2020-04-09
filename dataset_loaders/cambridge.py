@@ -53,6 +53,7 @@ class Cambridge(data.Dataset):
         #
         
         if self.train:
+        
             training_file = open(os.path.join(self.data_path, self.scene, 'dataset_train.txt'), 'r')
         else:
             training_file = open(os.path.join(self.data_path, self.scene, 'dataset_test.txt'), 'r')
@@ -96,7 +97,7 @@ class Cambridge(data.Dataset):
             pose = point.pose
             index += 1
         index -= 1
-
+        
         if self.target_transform is not None:
             pose = self.target_transform(pose) 
         
