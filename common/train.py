@@ -457,20 +457,19 @@ class Trainer(object):
 
               saved_list.append(epoch)
 
-              if len(saved_list)>1:
-                os.remove(os.path.join('logs',self.experiment,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
-                print('epoch_{}.pth.tar deleted.'.format(saved_list[0]))
-                del saved_list[0]
-
-              #early stop
-              if epoch > 300 and self.patience > 0:
-                early_stop_counter = 0
               print(f'Validation loss decreased ({past_best:.6f} --> {curr_val:.6f}). Zero counter and save model ...')
               self.save_checkpoint(epoch)
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
-            
-            elif epoch > 300 and self.patience > 0:
+              if len(saved_list)>1:
+                os.remove(os.path.join('logs',self.experiment,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
+                print('epoch_{}.pth.tar deleted.'.format(saved_list[0]))
+                del saved_list[0]
+              #early stop
+              if epoch > 300 and self.config['patience'] > 0:
+                early_stop_counter = 0
+                
+            elif epoch > 300 and self.config['patience'] > 0:
               early_stop_counter += self.config['val_freq']
               print('Early stop counter value: {}'.format(early_stop_counter))
               if early_stop_counter == self.config['patience']:

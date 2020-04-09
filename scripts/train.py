@@ -148,30 +148,36 @@ tforms.append(transforms.ToTensor())
 tforms.append(transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1])))
 data_transform = transforms.Compose(tforms)
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
-
+# val transformers
+val_tforms = [transforms.Resize(resize)]
+val_tforms.append(transforms.ToTensor())
+val_tforms.append(transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1])))
+val_data_transform = transforms.Compose(val_tforms)
 # datasets
 data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 kwargs = dict(scene=args.scene, data_path=data_dir, transform=data_transform,
+  target_transform=target_transform, seed=seed)
+val_kwargs = dict(scene=args.scene, data_path=data_dir, transform=val_data_transform,
   target_transform=target_transform, seed=seed)
 if args.model == 'posenet':
   if args.dataset == '7Scenes':
     from dataset_loaders.seven_scenes import SevenScenes
     train_set = SevenScenes(train=True, **kwargs)
-    val_set = SevenScenes(train=False, **kwargs)
+    val_set = SevenScenes(train=False, **val_kwargs)
   elif args.dataset == 'RobotCar':
     from dataset_loaders.robotcar import RobotCar
     train_set = RobotCar(train=True, **kwargs)
-    val_set = RobotCar(train=False, **kwargs)
+    val_set = RobotCar(train=False, **val_kwargs)
   elif args.dataset == 'AachenDayNight':
     kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
     from dataset_loaders.aachen_day_night import AachenDayNight
     train_set = AachenDayNight(train=True, **kwargs)
-    val_set = AachenDayNight(train=False, **kwargs)
+    val_set = AachenDayNight(train=False, **val_kwargs)
   elif args.dataset == 'Cambridge':
     kwargs = dict(kwargs,real_prob=args.real_prob, style_dir = args.style_dir)
     from dataset_loaders.cambridge import Cambridge
     train_set = Cambridge(train=True, **kwargs)
-    val_set = Cambridge(train=False, **kwargs)
+    val_set = Cambridge(train=False, **val_kwargs)
   
   else:
     raise NotImplementedError

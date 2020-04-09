@@ -162,7 +162,7 @@ def main():
 
     decoder.to(device)
 
-    num_workers = 2
+    num_workers = 0
     transform = transforms.Compose([
     transforms.Resize((224,224)),
     transforms.ToTensor(),
