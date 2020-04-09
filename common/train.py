@@ -135,14 +135,14 @@ class Trainer(object):
     self.config['print_freq'] = section.getint('print_freq')
 
     
-    i = 0
-    self.experiment = self.experiment + '_version_{}'.format(i)
     self.logdir = osp.join(os.getcwd(), 'logs', self.experiment)
+    i = 0
     while osp.isdir(self.logdir):
       i += 1
       temp = self.experiment + '_version_{}'.format(i)
       self.logdir = osp.join(os.getcwd(), 'logs', temp)
-    
+    if i != 0:
+      self.experiment = self.experiment + '_version_{}'.format(i)
     os.makedirs(self.logdir)
     copyfile(config_file, osp.join(self.logdir, 'config.ini'))
 
@@ -402,10 +402,10 @@ class Trainer(object):
 
             imgs = data[0]
          
-            from common.vis_utils import show_batch, show_stereo_batch
-            from torchvision.utils import make_grid
-            show_batch(make_grid(imgs.reshape(-1,3,256,455), nrow=6, padding=5, normalize=True))
-            sys.exit(-1)
+            #from common.vis_utils import show_batch, show_stereo_batch
+            #from torchvision.utils import make_grid
+            #show_batch(make_grid(imgs.reshape(-1,3,256,455), nrow=6, padding=5, normalize=True))
+            #sys.exit(-1)
 
             val_data_time.update(time.time() - end)
             
@@ -446,7 +446,8 @@ class Trainer(object):
 
 
          # SAVE CHECKPOINT
-        if epoch % self.config['snapshot'] == 0 and len(val_loss_list)>=2:
+        if len(val_loss_list)>=2 and ((epoch % self.config['val_freq'] == 0) or
+                                        (epoch == self.config['n_epochs']-1)):
           # when val_freq == snapshot, it means that we want to save the model when finding a good val
           # when val_freq != snapshot, usually we do val and the saving randomly, and only refer to the model at
           # the final epoch as the peneulmate version. 
@@ -468,7 +469,7 @@ class Trainer(object):
               #early stop
               if epoch > 300 and self.config['patience'] > 0:
                 early_stop_counter = 0
-                
+
             elif epoch > 300 and self.config['patience'] > 0:
               early_stop_counter += self.config['val_freq']
               print('Early stop counter value: {}'.format(early_stop_counter))
