@@ -104,6 +104,9 @@ class AachenTriplet(data_.Dataset):
         for i in tqdm.tqdm(range(len(pose_lines)), total=len(pose_lines),
                             desc='Read images and load pose', leave=False):
             pose_i = pose_lines[i]
+    
+            if pose_i[0] == 'db/2048.jpg':
+                continue
             # rotation quaternion
             q = [float(x) for x in pose_i[2:6]]
             # camera center
@@ -150,7 +153,7 @@ class AachenTriplet(data_.Dataset):
             imgs_poses[img_name] = self.poses[i]
 
         self.gt_idx = np.stack(selected_idces)
-
+  
         self.triplets = []
     
         # kept for training or val
@@ -168,6 +171,7 @@ class AachenTriplet(data_.Dataset):
             if anchor_name in list(MostSimPairs_dict.keys()) and \
                 anchor_name in list(AllPairs_dict.keys()):
                 pos_names = set(MostSimPairs_dict[anchor_name]).intersection(set(kept_images))
+
                 #print('pos:',pos_names)
                 # only keep those neg in training or val set
                 all_pos_names = set(AllPairs_dict[anchor_name]).intersection(set(kept_images))
@@ -183,6 +187,8 @@ class AachenTriplet(data_.Dataset):
                     self.triplets_idx[i] = 1
                 else:
                     self.triplets_idx[i] = 0
+            #else:
+            #    print(anchor_name)
 
             if self.triplets_idx[i] == 0:
                 rand_idx = np.random.randint(0,len(kept_images),2)
@@ -200,6 +206,7 @@ class AachenTriplet(data_.Dataset):
                 
 
             self.triplets.append(triplet)
+        print('loaded {} triplets for {} data points'.format(len(self.triplets),len(self.images)))
 
     def get_style(self,img_shape):
         num_styles = len(self.available_styles)
@@ -226,19 +233,19 @@ class AachenTriplet(data_.Dataset):
     def __getitem__(self, index):
         
         triplet = self.triplets[index]
-        print('anchor: ',triplet.anchor_path)
+        #print('anchor: ',triplet.anchor_path)
         anchor = load_image(triplet.anchor_path)
         anchor_pose = triplet.anchor_pose
 
         pos_idx = np.random.randint(low=0,high=len(triplet.pos_paths),size=1).item()
         pos = load_image(triplet.pos_paths[pos_idx])
-        print('pos:', triplet.pos_paths[pos_idx])
+        #print('pos:', triplet.pos_paths[pos_idx])
         pos_pose = triplet.pos_poses[pos_idx]
 
         neg_idx = np.random.randint(low=0,high=len(triplet.neg_paths),size=1).item()
         neg = load_image(triplet.neg_paths[neg_idx])
         neg_pose = triplet.neg_poses[neg_idx]
-        print('neg:',triplet.neg_paths[neg_idx])
+        #print('neg:',triplet.neg_paths[neg_idx])
         if self.target_transform is not None:
             anchor_pose = self.target_transform(anchor_pose)
             pos_pose = self.target_transform(pos_pose)
@@ -251,30 +258,40 @@ class AachenTriplet(data_.Dataset):
         style_idx = torch.zeros(3)
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
-            anchor_style = get_style(anchor.shape)
-            torch.zeros[0] = 1
+            anchor_style = self.get_style(anchor.shape)
+            style_idx[0] = 1
         else:
             anchor_style = torch.zeros_like(anchor)
         
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
-            pos_style = get_style(pos.shape)
-            pos.zeros[1] = 1
+            pos_style = self.get_style(pos.shape)
+            style_idx[1] = 1
         else:
             pos_style = torch.zeros_like(pos)
 
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
-            neg_style = get_style(neg.shape)
-            torch.zeros[2] = 1
+            neg_style = self.get_style(neg.shape)
+            style_idx[2] = 1
         else:
             neg_style = torch.zeros_like(neg)
-        triplet_idx = self.triplets_idx[index]
+        #triplet_idx = self.triplets_idx[index]
+        #print(anchor.shape,pos.shape,neg.shape)
         real_triplet = torch.stack((anchor,pos,neg),dim=0)
         style_triplet = torch.stack((anchor_style,pos_style,neg_style),dim=0)
         pose_triplet = torch.stack((anchor_pose,pos_pose,neg_pose),dim=0)
-        return (real_triplet,triplet_idx, style_triplet,style_idx),pose_triplet
-    
+        return (real_triplet, style_triplet,style_idx),pose_triplet
+        '''
+        else:
+            img = load_image(self.images[index].path)
+            if self.target_transform is not None:
+                pose = self.target_transform(self.images[index].pose)
+            
+            img = self.transform(img)
+
+            return (img,0),pose
+        '''
     def __len__(self):
       return self.poses.shape[0]
 
@@ -313,10 +330,10 @@ def main():
     data_path = '../data/deepslam_data/AachenDayNight'
     train = True
     dset = AachenTriplet(data_path, train,transform=transform,target_transform=target_transform,
-    real_prob=100,style_dir='../data/style_selected')
+    real_prob=75,style_dir='../data/style_selected')
     print('Loaded AachenDayNight training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data_.DataLoader(dset, batch_size=1, shuffle=True,
+    data_loader = data_.DataLoader(dset, batch_size=10, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
     N_batches = 20
@@ -324,9 +341,9 @@ def main():
         data_shape = data[0].shape
         to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
         real_triplet = data[0].reshape(to_shape)
-        triplet_idx = data[1]
-        style_triplet = data[2].reshape(to_shape)
-        style_indc = data[3].view(-1)
+        #triplet_idx = data[1]
+        style_triplet = data[1].reshape(to_shape)
+        style_indc = data[2].view(-1)
     
         if sum(style_indc == 1) > 0:
             with torch.no_grad():

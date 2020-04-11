@@ -82,7 +82,7 @@ def safe_collate(batch):
 
 class Trainer(object):
   def __init__(self, model, optimizer, train_criterion, config_file, experiment,
-      train_dataset, val_dataset, device, seed=0, checkpoint_file=None, alpha=1,
+      train_dataset, val_dataset, device, seed=0, checkpoint_file=None, alpha=1.0,
       resume_optim=False, val_criterion=None,visdom_server='http://localhost', visdom_port=8097):
     """
     General purpose training script
@@ -152,8 +152,8 @@ class Trainer(object):
 
       self.training_loss_win = 'training_loss_win'
       self.vis = Visdom(server=visdom_server, port=visdom_port)
-      self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.training_loss_win,
-        opts={'legend': ['train_loss'], 'xlabel': 'epochs',
+      self.vis.line(X=np.zeros((1,2)), Y=np.zeros((1,2)), win=self.training_loss_win,
+        opts={'legend': ['pose_loss','triplet_loss'], 'xlabel': 'epochs',
               'ylabel': 'loss'}, env=self.vis_env)
       
       self.val_loss_win = 'val_loss_win'
@@ -379,7 +379,7 @@ class Trainer(object):
     if self.config['log_visdom']:
       self.vis.save(envs=[self.vis_env])
 
-  def style_train_val(self):
+  def style_train_val(self,trinet=False):
       """
       Function that does the training and validation
       :param lstm: whether the model is an LSTM
@@ -413,11 +413,10 @@ class Trainer(object):
               optim=self.optimizer, train=False)
       
             end = time.time()
-            a_loss,r_loss, _ = step_feedfwd(imgs, self.model, self.config['cuda'],
+            loss,_ = step_feedfwd(imgs, self.model, self.config['cuda'], trinet=trinet,
               **kwargs)
-            loss = a_loss
-            val_loss.update(loss)
-            
+            val_loss.update(loss.abs_loss.item())
+  
             val_batch_time.update(time.time() - end)
 
             if batch_idx % self.config['print_freq'] == 0:
@@ -428,7 +427,7 @@ class Trainer(object):
                     'Loss {:f}' \
                 .format(self.experiment, epoch, batch_idx, len(self.val_loader)-1,
                 val_data_time.val, val_data_time.avg, val_batch_time.val,
-                val_batch_time.avg, loss))
+                val_batch_time.avg, loss.abs_loss.item()))
               if self.config['log_visdom']:
                 self.vis.save(envs=[self.vis_env])
 
@@ -500,15 +499,13 @@ class Trainer(object):
           data_shape = data[0].shape
           to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
           real = data[0].reshape(to_shape)
-          content_style = data[1]
-          content = content_style[:,0].reshape(to_shape)
-          style = content_style[:,1].reshape(to_shape)
+          style = data[1].reshape(to_shape)
           style_indc = data[2].view(-1)
           if sum(style_indc == 1) > 0:
               with torch.no_grad():
                   if self.alpha < 0:
                     self.alpha = np.random.rand(1).item()
-                  content_f = vgg(content[style_indc == 1].cuda())
+                  content_f = vgg(real[style_indc == 1].cuda())
                   style_f = vgg(style[style_indc == 1].cuda())
               
                   feat = adaptive_instance_normalization(content_f, style_f)
@@ -518,10 +515,10 @@ class Trainer(object):
                   # the same size as the original
                   real[style_indc == 1] = stylized.cpu()[...,:real.shape[-2],:real.shape[-1]]
   
-         # from common.vis_utils import show_batch, show_stereo_batch
-         # from torchvision.utils import make_grid
-         # show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
-         # sys.exit(-1)
+          from common.vis_utils import show_batch, show_stereo_batch
+          from torchvision.utils import make_grid
+          show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
+          #sys.exit(-1)
 
           real = real.reshape(data_shape)
           kwargs = dict(target=target, criterion=self.train_criterion,
@@ -530,7 +527,7 @@ class Trainer(object):
 
       
           end = time.time()
-          loss, _ = step_feedfwd(real, self.model, self.config['cuda'],
+          loss, _ = step_feedfwd(real, self.model, self.config['cuda'],trinet=trinet,
             **kwargs)
           
           train_batch_time.update(time.time() - end)
@@ -542,14 +539,22 @@ class Trainer(object):
                   'Batch {:d}/{:d}\t' \
                   'Data Time {:.4f} ({:.4f})\t' \
                   'Step Time {:.4f} ({:.4f})\t' \
-                  'Loss {:f}\t' \
+                  'Contextual Loss {:f}\t' \
+                  'Pose Loss {:f}\t' \
+                  'total Loss {:f}\t' \
                   'lr: {:f}'.\
               format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
               train_data_time.val, train_data_time.avg, train_batch_time.val,
-              train_batch_time.avg, loss, lr))
+              train_batch_time.avg, 
+              loss.triplet_loss.item(),(loss.abs_loss+loss.vo_loss).item(),
+              loss.final_loss.item(), lr))
+
             if self.config['log_visdom']:
               self.vis.line(X=np.asarray([epoch_count]),
-                Y=np.asarray([loss]), win=self.training_loss_win, name='train_loss',
+                Y=np.asarray([loss.final_loss]), win=self.training_loss_win, name='total_loss',
+                update='append', env=self.vis_env)
+              self.vis.line(X=np.asarray([epoch_count]),
+                Y=np.asarray([loss.triplet_loss]), win=self.training_loss_win, name='triplet_loss',
                 update='append', env=self.vis_env)
               if self.n_criterion_params:
                 for name, v in self.train_criterion.named_parameters():
@@ -568,7 +573,7 @@ class Trainer(object):
         self.vis.save(envs=[self.vis_env])
 
 def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
-    train=True, max_grad_norm=0.0):
+    train=True, max_grad_norm=0.0,trinet=False):
       """
       training/validation step for a feedforward NN
       :param data: 
@@ -587,24 +592,32 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
       if cuda:
         data_var = data_var.cuda(non_blocking=True)
       with torch.set_grad_enabled(train):
-        output = model(data_var)
+        if trinet:
+          output = model(data_var)
+          pred = output[0]
+          feats = output[1]
+          feats = feats if train else None
+        else:
+          output = model(data_var)
       if criterion is not None:
         if cuda:
           target = target.cuda(non_blocking=True)
         target_var = Variable(target, requires_grad=False)
         with torch.set_grad_enabled(train):
-          abs_loss,vo_loss = criterion(output, target_var)
-          loss = abs_loss+vo_loss
+          if trinet:
+            loss = criterion([pred,feats], target_var)
+          else:
+            loss = criterion(output,target_var)
+      
         if train:
           # SGD step
           optim.learner.zero_grad()
-          loss.backward()
+          loss.final_loss.backward()
           if max_grad_norm > 0.0:
             torch.nn.utils.clip_grad_norm(model.parameters(), max_grad_norm)
           optim.learner.step()
-          return loss.item(), output
-        else:
-          return abs_loss.item(),vo_loss.item(),output
+        
+        return loss, output
       else:
         return 0, output
 

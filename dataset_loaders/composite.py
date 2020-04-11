@@ -94,8 +94,7 @@ class MF(data.Dataset):
     clip  = [self.dset[i] for i in idx]
 
     real_imgs  = torch.stack([c[0][0] for c in clip], dim=0)
-    content_imgs = torch.stack([c[0][1][0] for c in clip], dim=0)
-    style_imgs =  torch.stack([c[0][1][1] for c in clip], dim=0)
+    style_imgs =  torch.stack([c[0][1] for c in clip], dim=0)
     style_idces = torch.stack([c[0][2] for c in clip], dim=0)
 
     poses = torch.stack([c[1] for c in clip], dim=0)
@@ -108,7 +107,7 @@ class MF(data.Dataset):
         poses = torch.stack([c[1] for c in clip], dim=0)
       poses = torch.cat((poses, vos), dim=0)
 
-    return (real_imgs,torch.stack([content_imgs,style_imgs],dim=0),style_idces), poses
+    return (real_imgs,style_imgs,style_idces), poses
 
   def __len__(self):
     L = len(self.dset)

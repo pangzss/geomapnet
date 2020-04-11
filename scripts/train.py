@@ -10,8 +10,8 @@ import set_paths
 from common.train import Trainer
 from common.optimizer import Optimizer
 from common.criterion import PoseNetCriterion, MapNetCriterion,\
-  MapNetOnlineCriterion
-from models.posenet import PoseNet, MapNet
+  MapNetOnlineCriterion, TripletCriterion
+from models.posenet import PoseNet, MapNet, TriNet
 from dataset_loaders.composite import MF, MFOnline
 import os.path as osp
 import numpy as np
@@ -33,7 +33,7 @@ parser.add_argument('--alpha', type=float, help='intensity of stylization')
 #parser.add_argument('--num_styles', type=int, help='number of styles')
 parser.add_argument('--t_aug', action='store_true', help='use traditional augmentation')
 parser.add_argument('--config_file', type=str, help='configuration file')
-parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
+parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet'),
   help='Model to train')
 parser.add_argument('--device', type=str, default='0',
   help='value to be set to $CUDA_VISIBLE_DEVICES')
@@ -43,6 +43,8 @@ parser.add_argument('--learn_beta', action='store_true',
   help='Learn the weight of translation loss')
 parser.add_argument('--learn_gamma', action='store_true',
   help='Learn the weight of rotation loss')
+parser.add_argument('--learn_sigma', action='store_true',
+  help='Learn the weights of contextual and pose losses')
 parser.add_argument('--resume_optim', action='store_true',
   help='Resume optimization (only effective if a checkpoint is given')
 parser.add_argument('--suffix', type=str, default='',
@@ -64,10 +66,14 @@ weight_decay = optim_config.pop('weight_decay')
 section = settings['hyperparameters']
 dropout = section.getfloat('dropout')
 color_jitter = section.getfloat('color_jitter', 0)
+
+sc = section.getfloat('sigma_cx', 0.0)
+sp = section.getfloat('sigma_pose',0.0)
+
 sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
 train_split = section.getint('train_split', 6)
-if args.model.find('mapnet') >= 0:
+if args.model.find('mapnet') >= 0 or args.model=='trinet':
   skip = section.getint('skip')
   real = section.getboolean('real')
   variable_skip = section.getboolean('variable_skip')
@@ -96,6 +102,8 @@ if args.model == 'posenet':
   model = posenet
 elif args.model.find('mapnet') >= 0:
   model = MapNet(mapnet=posenet)
+elif args.model == 'trinet':
+  model = TriNet(trinet=posenet)
 else:
   raise NotImplementedError
 
@@ -111,8 +119,15 @@ elif args.model.find('mapnet') >= 0:
     train_criterion = MapNetOnlineCriterion(**kwargs)
     val_criterion = MapNetOnlineCriterion()
   else:
+    kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, learn_beta=args.learn_beta,
+                learn_gamma=args.learn_gamma)
     train_criterion = MapNetCriterion(**kwargs)
     val_criterion = MapNetCriterion()
+elif args.model == 'trinet':
+  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, sp=sp, learn_beta=args.learn_beta,
+                learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
+  train_criterion = TripletCriterion(**kwargs)
+  val_criterion = TripletCriterion()
 else:
   raise NotImplementedError
 
@@ -124,6 +139,9 @@ if args.learn_beta and hasattr(train_criterion, 'sax') and \
 if args.learn_gamma and hasattr(train_criterion, 'srx') and \
     hasattr(train_criterion, 'srq'):
   param_list.append({'params': [train_criterion.srx, train_criterion.srq]})
+if args.learn_sigma and hasattr(train_criterion, 'sc') and \
+    hasattr(train_criterion, 'sp'):
+  param_list.append({'params': [train_criterion.sc, train_criterion.sp]})
 optimizer = Optimizer(params=param_list, method=opt_method, base_lr=lr,
   weight_decay=weight_decay, **optim_config)
 
@@ -137,8 +155,10 @@ crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 # transformers
-tforms = [transforms.Resize(resize)]
-#tforms.append(transforms.CenterCrop(crop_size))
+if args.dataset == 'AachenDayNight':
+    tforms = [transforms.Resize(crop_size)]
+else:
+    tforms = [transforms.Resize(resize)]
 if color_jitter > 0:
   assert color_jitter <= 1.0
   print('Using ColorJitter data augmentation')
@@ -149,7 +169,10 @@ tforms.append(transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1])))
 data_transform = transforms.Compose(tforms)
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 # val transformers
-val_tforms = [transforms.Resize(resize)]
+if args.dataset == 'AachenDayNight':
+    val_tforms = [transforms.Resize(crop_size)]
+else:
+    val_tforms = [transforms.Resize(resize)]
 val_tforms.append(transforms.ToTensor())
 val_tforms.append(transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1])))
 val_data_transform = transforms.Compose(val_tforms)
@@ -173,6 +196,8 @@ if args.model == 'posenet':
     from dataset_loaders.aachen_day_night import AachenDayNight
     train_set = AachenDayNight(train=True, **kwargs)
     val_set = AachenDayNight(train=False, **val_kwargs)
+  
+    
   elif args.dataset == 'Cambridge':
     kwargs = dict(kwargs,real_prob=args.real_prob, style_dir = args.style_dir)
     from dataset_loaders.cambridge import Cambridge
@@ -193,6 +218,11 @@ elif args.model.find('mapnet') >= 0:
     kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
     train_set = MF(train=True, real=real, **kwargs)
     val_set = MF(train=False, real=real, **val_kwargs)
+elif args.model == 'trinet':
+  from dataset_loaders.aachen_triplet import AachenTriplet
+  kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+  train_set = AachenTriplet(train=True, **kwargs)
+  val_set = AachenTriplet(train=False, **val_kwargs)
 else:
   raise NotImplementedError
 
@@ -207,10 +237,13 @@ else:
     args.model, config_name)
 
 experiment_name = '{:s}_{}_percent_real'.format(experiment_name,args.real_prob)
-#if args.learn_beta:
-#  experiment_name = '{:s}_learn_beta'.format(experiment_name)
-#if args.learn_gamma:
-#  experiment_name = '{:s}_learn_gamma'.format(experiment_name)
+if args.learn_beta:
+  experiment_name = '{:s}_beta'.format(experiment_name)
+if args.learn_gamma:
+  experiment_name = '{:s}_gamma'.format(experiment_name)
+if args.learn_sigma:
+  experiment_name = '{:s}_sigma'.format(experiment_name)
+
 if args.real_prob < 100:
   experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha if args.alpha>=0 else 'Rand')
 if args.t_aug:
@@ -223,7 +256,8 @@ trainer = Trainer(model, optimizer, train_criterion, args.config_file,
                   checkpoint_file=args.checkpoint,
                   resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
 lstm = args.model == 'vidloc'
+trinet = args.model == 'trinet'
 if args.dataset == 'AachenDayNight' or args.dataset =='Cambridge':
-  trainer.style_train_val()
+  trainer.style_train_val(trinet=trinet)
 else:
   trainer.train_val(lstm=lstm)

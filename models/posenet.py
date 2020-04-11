@@ -13,7 +13,7 @@ import torch.nn.init
 import numpy as np
 
 import os
-os.environ['TORCH_MODEL_ZOO'] = os.path.join('..', 'data', 'models')
+os.environ['TORCH_HOME'] = os.path.join('..', 'data', 'models')
 
 import sys
 sys.path.insert(0, '../')
@@ -102,3 +102,70 @@ class MapNet(nn.Module):
     poses = poses.view(s[0], s[1], -1)
    
     return poses
+
+
+
+class TriNet(nn.Module):
+  """
+  Implements the MapNet model (green block in Fig. 2 of paper)
+  """
+  def __init__(self, trinet,layer=4,block=2):
+    """
+    :param mapnet: the MapNet (two CNN blocks inside the green block in Fig. 2
+    of paper). Not to be confused with MapNet, the model!
+    """
+    super(TriNet, self).__init__()
+    self.trinet = trinet
+    self.feats = None
+    self.selected_layer = layer
+    self.selected_block = block
+    self.hook_layer_forward()
+  def hook_layer_forward(self):
+        def hook_function(module, input, output):
+            self.feats = output
+        # Hook the selected layer
+        self.trinet._modules['feature_extractor']._modules['layer'+str(self.selected_layer)][self.selected_block]._modules['conv2'].register_forward_hook(hook_function)
+
+  def forward(self, x):
+    """
+    :param x: image blob (N x T x C x H x W)
+    :return: pose outputs
+     (N x T x 6)
+    """
+   
+    s = x.size()
+    if len(s) == 5:
+      x = x.view(-1, *s[2:])
+    else:
+      x = x.view(-1, *s[1:])
+    poses = self.trinet(x)
+    poses = poses.view(s[0], s[1], -1)
+
+    #self.feats = self.feats.view(s[0],3,self.feats.shape[-3],self.feats.shape[-2],self.feats.shape[-1])
+    return (poses,self.feats)
+
+if __name__ == '__main__':
+  from torchvision import models
+  from torchvision import transforms
+  from dataset_loaders.utils import load_image
+  feature_extractor = models.resnet34(pretrained=True)
+  posenet = PoseNet(feature_extractor, droprate=0, pretrained=True)
+  model = TriNet(posenet)
+
+  num_workers = 0
+  transform = transforms.Compose([
+  transforms.Resize((224,224)),
+  transforms.ToTensor(),
+
+  transforms.Normalize(mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225])])
+
+  data_path = '../data/deepslam_data/AachenDayNight/db'
+  img_dir = os.listdir(data_path)[0]
+  img = load_image(os.path.join(data_path,img_dir))
+  img = transform(img)
+
+  img = torch.ones(10,3,3,256,256)
+  pose,feats = model(img)
+  print(pose.shape)
+  print(feats.shape)

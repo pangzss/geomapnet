@@ -11,7 +11,14 @@ in the paper
 from common import pose_utils
 import torch
 from torch import nn
-
+import torch.nn.functional as F
+class Loss:
+  def __init__(self, abs_loss=torch.tensor(0.0), vo_loss=torch.tensor(0.0), 
+              triplet_loss=torch.tensor(0.0),final_loss=torch.tensor(0.0)):
+        self.abs_loss = abs_loss
+        self.vo_loss = vo_loss
+        self.triplet_loss = triplet_loss
+        self.final_loss = final_loss
 class QuaternionLoss(nn.Module):
   """
   Implements distance between quaternions as mentioned in
@@ -45,11 +52,13 @@ class PoseNetCriterion(nn.Module):
     :param targ: N x 7
     :return: 
     """
+  
     loss = torch.exp(-self.sax) * self.t_loss_fn(pred[:, :3], targ[:, :3]) + \
       self.sax +\
      torch.exp(-self.saq) * self.q_loss_fn(pred[:, 3:], targ[:, 3:]) +\
       self.saq
-    return loss
+    loss_ = Loss(final_loss=loss)
+    return loss_
 
 class MapNetCriterion(nn.Module):
   def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,
@@ -79,7 +88,6 @@ class MapNetCriterion(nn.Module):
     :param targ: N x T x 6
     :return:
     """
-
     # absolute pose loss
     s = pred.size()
 
@@ -106,9 +114,9 @@ class MapNetCriterion(nn.Module):
       self.srq
 
     # total loss
-    loss = abs_loss + vo_loss
+    loss_ = Loss(abs_loss=abs_loss,vo_loss=vo_loss,final_loss=abs_loss+vo_loss)
 
-    return abs_loss,vo_loss
+    return loss_
 
 class MapNetOnlineCriterion(nn.Module):
   def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,
@@ -184,3 +192,89 @@ class MapNetOnlineCriterion(nn.Module):
     # total loss
     loss = abs_loss + vo_loss
     return loss
+
+class TripletCriterion(nn.Module):
+  def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,
+               saq=0.0, srx=0, srq=0.0,sc=0.0,sp=0.0,
+                learn_beta=False, learn_gamma=False, 
+                learn_sigma=False):
+    """
+    Implements L_D from eq. 2 in the paper
+    :param t_loss_fn: loss function to be used for translation
+    :param q_loss_fn: loss function to be used for rotation
+    :param sax: absolute translation loss weight
+    :param saq: absolute rotation loss weight
+    :param srx: relative translation loss weight
+    :param srq: relative rotation loss weight
+    :param learn_beta: learn sax and saq?
+    :param learn_gamma: learn srx and srq?
+    """
+    super(TripletCriterion, self).__init__()
+    from contextual_loss.CX_distance import CX_sim
+    self.CS = CX_sim
+    self.margin = 0.5
+    self.sc = nn.Parameter(torch.Tensor([sc]), requires_grad=learn_sigma)
+    self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
+
+    self.t_loss_fn = t_loss_fn
+    self.q_loss_fn = q_loss_fn
+    self.sax = nn.Parameter(torch.Tensor([sax]), requires_grad=learn_beta)
+    self.saq = nn.Parameter(torch.Tensor([saq]), requires_grad=learn_beta)
+    self.srx = nn.Parameter(torch.Tensor([srx]), requires_grad=learn_gamma)
+    self.srq = nn.Parameter(torch.Tensor([srq]), requires_grad=learn_gamma)
+
+  def forward(self, output, targ):
+    """
+    :param pred: N x T x 6
+    :param targ: N x T x 6
+    :return:
+    """
+    pred = output[0]
+    feats = output[1]
+    s = pred.size()
+    # contextual triplet loss
+    triplet_loss = 0.0
+    if feats is not None:
+      #feat_a = feats[:,0]
+      #feat_p = feats[:,1]
+      #feat_n = feats[:,2]
+ 
+      sim_ap = self.CS(feats[:s[0]],feats[s[0]:2*s[0]])
+      sim_an = self.CS(feats[:s[0]],feats[2*s[0]:])
+      triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
+    # absolute pose loss
+
+
+    abs_loss =\
+      torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],
+                                            targ.view(-1, *s[2:])[:, :3]) + \
+      self.sax + \
+      torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, *s[2:])[:, 3:],
+                                            targ.view(-1, *s[2:])[:, 3:]) + \
+      self.saq
+
+    vo_loss = 0.0
+    if feats is not None:
+      # get the VOs
+      pred_vos = pose_utils.calc_vos_simple(pred)
+      targ_vos = pose_utils.calc_vos_simple(targ)
+
+      # VO loss
+      s = pred_vos.size()
+      vo_loss = \
+        torch.exp(-self.srx) * self.t_loss_fn(pred_vos.view(-1, *s[2:])[:, :3],
+                                              targ_vos.view(-1, *s[2:])[:, :3]) + \
+        self.srx + \
+        torch.exp(-self.srq) * self.q_loss_fn(pred_vos.view(-1, *s[2:])[:, 3:],
+                                              targ_vos.view(-1, *s[2:])[:, 3:]) + \
+        self.srq
+
+    # total pose loss
+    pose_loss = abs_loss + vo_loss
+
+    # triplet loss + pose loss
+    loss = torch.exp(-self.sc)*triplet_loss + self.sc + \
+            torch.exp(-self.sp)*pose_loss + self.sp
+
+    loss_ = Loss(abs_loss=abs_loss,vo_loss=vo_loss,triplet_loss=triplet_loss,final_loss=loss)
+    return loss_
