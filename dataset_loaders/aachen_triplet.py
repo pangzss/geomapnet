@@ -278,9 +278,9 @@ class AachenTriplet(data_.Dataset):
             neg_style = torch.zeros_like(neg)
         #triplet_idx = self.triplets_idx[index]
         #print(anchor.shape,pos.shape,neg.shape)
-        real_triplet = torch.stack((anchor,pos,neg),dim=0)
-        style_triplet = torch.stack((anchor_style,pos_style,neg_style),dim=0)
-        pose_triplet = torch.stack((anchor_pose,pos_pose,neg_pose),dim=0)
+        real_triplet = torch.stack((pos,anchor,neg),dim=0)
+        style_triplet = torch.stack((pos_style,anchor_style,neg_style),dim=0)
+        pose_triplet = torch.stack((pos_pose,anchor_pose,neg_pose),dim=0)
         return (real_triplet, style_triplet,style_idx),pose_triplet
         '''
         else:

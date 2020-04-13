@@ -156,7 +156,8 @@ crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 # transformers
 if args.dataset == 'AachenDayNight':
-    tforms = [transforms.Resize(crop_size)]
+    tforms = [transforms.Resize(resize)]
+    tforms.append(transforms.CenterCrop(crop_size))
 else:
     tforms = [transforms.Resize(resize)]
 if color_jitter > 0:
@@ -170,7 +171,8 @@ data_transform = transforms.Compose(tforms)
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 # val transformers
 if args.dataset == 'AachenDayNight':
-    val_tforms = [transforms.Resize(crop_size)]
+    val_tforms = [transforms.Resize(resize)]
+    val_tforms.append(transforms.CenterCrop(crop_size))
 else:
     val_tforms = [transforms.Resize(resize)]
 val_tforms.append(transforms.ToTensor())

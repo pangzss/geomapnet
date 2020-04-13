@@ -236,16 +236,10 @@ class TripletCriterion(nn.Module):
     # contextual triplet loss
     triplet_loss = 0.0
     if feats is not None:
-      #feat_a = feats[:,0]
-      #feat_p = feats[:,1]
-      #feat_n = feats[:,2]
-      st = feats.size()
-      feats = feats.reshape(s[0],3,st[1],st[2],st[3])
-      sim_ap = self.CS(feats[:,0],feats[:,1])
-      sim_an = self.CS(feats[:,0],feats[:,2])
+      sim_ap = self.CS(feats[:,1],feats[:,0])
+      sim_an = self.CS(feats[:,1],feats[:,2])
       triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
     # absolute pose loss
-
 
     abs_loss =\
       torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],

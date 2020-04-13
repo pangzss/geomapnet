@@ -106,7 +106,10 @@ stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
-
+if args.dataset == 'AachenDayNight':
+    tforms = [transforms.Resize(crop_size)]
+else:
+    tforms = [transforms.Resize(resize)]
 # transformer
 data_transform = transforms.Compose([
   transforms.Resize(resize),

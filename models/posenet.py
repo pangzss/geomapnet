@@ -141,7 +141,7 @@ class TriNet(nn.Module):
     poses = self.trinet(x)
     poses = poses.view(s[0], s[1], -1)
 
-    #self.feats = self.feats.view(s[0],3,self.feats.shape[-3],self.feats.shape[-2],self.feats.shape[-1])
+    self.feats = self.feats.view(s[0],3,self.feats.shape[-3],self.feats.shape[-2],self.feats.shape[-1])
     return (poses,self.feats)
 
 if __name__ == '__main__':
