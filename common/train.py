@@ -148,12 +148,12 @@ class Trainer(object):
 
     if self.config['log_visdom']:
       # start plots
-      self.vis_env = experiment
+      self.vis_env = self.experiment
 
       self.training_loss_win = 'training_loss_win'
       self.vis = Visdom(server=visdom_server, port=visdom_port)
-      self.vis.line(X=np.zeros((1,2)), Y=np.zeros((1,2)), win=self.training_loss_win,
-        opts={'legend': ['pose_loss','triplet_loss'], 'xlabel': 'epochs',
+      self.vis.line(X=np.zeros((1,3)), Y=np.zeros((1,3)), win=self.training_loss_win,
+        opts={'legend': ['pose_loss','triplet_loss','total_loss'], 'xlabel': 'epochs',
               'ylabel': 'loss'}, env=self.vis_env)
       
       self.val_loss_win = 'val_loss_win'
@@ -388,10 +388,11 @@ class Trainer(object):
       val_loss_list = []
       early_stop_counter = 0
       saved_list = []
-      for epoch in range(self.start_epoch, self.config['n_epochs']):
+      for epoch in range(self.start_epoch, self.config['n_epochs']+1):
         # VALIDATION
         if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
-                                        (epoch == self.config['n_epochs']-1)) :
+                                        (epoch == self.config['n_epochs']-1) or 
+                                        (epoch == self.config['n_epochs']) ):
                       
           val_batch_time = Logger.AverageMeter()
           val_loss = Logger.AverageMeter()
@@ -488,83 +489,87 @@ class Trainer(object):
           self.vis.line(X=np.asarray([epoch]), Y=np.asarray([np.log10(lr)]),
             win=self.lr_win, name='learning_rate', update='append', env=self.vis_env)
 
-        # TRAIN
-        self.model.train()
-        train_data_time = Logger.AverageMeter()
-        train_batch_time = Logger.AverageMeter()
-        end = time.time()
-        for batch_idx, (data, target) in enumerate(self.train_loader):
-          train_data_time.update(time.time() - end)
-          # update batch
-          data_shape = data[0].shape
-          to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
-          real = data[0].reshape(to_shape)
-          style = data[1].reshape(to_shape)
-          style_indc = data[2].view(-1)
-          if sum(style_indc == 1) > 0:
-              with torch.no_grad():
-                  if self.alpha < 0:
-                    self.alpha = np.random.rand(1).item()
-                  content_f = vgg(real[style_indc == 1].cuda())
-                  style_f = vgg(style[style_indc == 1].cuda())
-              
-                  feat = adaptive_instance_normalization(content_f, style_f)
-                  feat = feat * self.alpha + content_f * (1 - self.alpha)
-                  stylized = decoder(feat)
-                  # the output from the decoder gets padded, so only keep the portion that has
-                  # the same size as the original
-                  real[style_indc == 1] = stylized.cpu()[...,:real.shape[-2],:real.shape[-1]]
-  
-          from common.vis_utils import show_batch, show_stereo_batch
-          from torchvision.utils import make_grid
-          show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
-          #sys.exit(-1)
-
-          real = real.reshape(data_shape)
-          kwargs = dict(target=target, criterion=self.train_criterion,
-            optim=self.optimizer, train=True,
-            max_grad_norm=self.config['max_grad_norm'])
-
-      
+        if epoch < self.config['n_epochs']:
+          # TRAIN
+          self.model.train()
+          train_data_time = Logger.AverageMeter()
+          train_batch_time = Logger.AverageMeter()
           end = time.time()
-          loss, _ = step_feedfwd(real, self.model, self.config['cuda'],trinet=trinet,
-            **kwargs)
-          
-          train_batch_time.update(time.time() - end)
+          for batch_idx, (data, target) in enumerate(self.train_loader):
+            train_data_time.update(time.time() - end)
+            # update batch
+            data_shape = data[0].shape
+            to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
+            real = data[0].reshape(to_shape)
+            style = data[1].reshape(to_shape)
+            style_indc = data[2].view(-1)
+            if sum(style_indc == 1) > 0:
+                with torch.no_grad():
+                    if self.alpha < 0:
+                      self.alpha = np.random.rand(1).item()
+                    content_f = vgg(real[style_indc == 1].cuda())
+                    style_f = vgg(style[style_indc == 1].cuda())
+                
+                    feat = adaptive_instance_normalization(content_f, style_f)
+                    feat = feat * self.alpha + content_f * (1 - self.alpha)
+                    stylized = decoder(feat)
+                    # the output from the decoder gets padded, so only keep the portion that has
+                    # the same size as the original
+                    real[style_indc == 1] = stylized.cpu()[...,:real.shape[-2],:real.shape[-1]]
+    
+            #from common.vis_utils import show_batch, show_stereo_batch
+            #from torchvision.utils import make_grid
+            #show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
+            #sys.exit(-1)
 
-          if batch_idx % self.config['print_freq'] == 0:
-            n_iter = epoch*len(self.train_loader) + batch_idx
-            epoch_count = float(n_iter)/len(self.train_loader)
-            print('Train {:s}: Epoch {:d}\t' \
-                  'Batch {:d}/{:d}\t' \
-                  'Data Time {:.4f} ({:.4f})\t' \
-                  'Step Time {:.4f} ({:.4f})\t' \
-                  'Contextual Loss {:f}\t' \
-                  'Pose Loss {:f}\t' \
-                  'total Loss {:f}\t' \
-                  'lr: {:f}'.\
-              format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
-              train_data_time.val, train_data_time.avg, train_batch_time.val,
-              train_batch_time.avg, 
-              loss.triplet_loss.item(),(loss.abs_loss+loss.vo_loss).item(),
-              loss.final_loss.item(), lr))
+            real = real.reshape(data_shape)
+            kwargs = dict(target=target, criterion=self.train_criterion,
+              optim=self.optimizer, train=True,
+              max_grad_norm=self.config['max_grad_norm'])
 
-            if self.config['log_visdom']:
-              self.vis.line(X=np.asarray([epoch_count]),
-                Y=np.asarray([loss.final_loss]), win=self.training_loss_win, name='total_loss',
-                update='append', env=self.vis_env)
-              self.vis.line(X=np.asarray([epoch_count]),
-                Y=np.asarray([loss.triplet_loss]), win=self.training_loss_win, name='triplet_loss',
-                update='append', env=self.vis_env)
-              if self.n_criterion_params:
-                for name, v in self.train_criterion.named_parameters():
-                  v = v.data.cpu().numpy()[0]
-                  self.vis.line(X=np.asarray([epoch_count]), Y=np.asarray([v]),
-                                      win=self.criterion_param_win, name=name,
-                                      update='append', env=self.vis_env)
-              self.vis.save(envs=[self.vis_env])
+        
+            end = time.time()
+            loss, _ = step_feedfwd(real, self.model, self.config['cuda'],trinet=trinet,
+              **kwargs)
+            
+            train_batch_time.update(time.time() - end)
 
-          end = time.time()
+            if batch_idx % self.config['print_freq'] == 0:
+              n_iter = epoch*len(self.train_loader) + batch_idx
+              epoch_count = float(n_iter)/len(self.train_loader)
+              print('Train {:s}: Epoch {:d}\t' \
+                    'Batch {:d}/{:d}\t' \
+                    'Data Time {:.4f} ({:.4f})\t' \
+                    'Step Time {:.4f} ({:.4f})\t' \
+                    'Triplet Loss {:f}\t' \
+                    'Pose Loss {:f}\t' \
+                    'total Loss {:f}\t' \
+                    'lr: {:f}'.\
+                format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
+                train_data_time.val, train_data_time.avg, train_batch_time.val,
+                train_batch_time.avg, 
+                loss.triplet_loss.item(),(loss.abs_loss+loss.vo_loss).item(),
+                loss.final_loss.item(), lr))
+
+              if self.config['log_visdom']:
+                self.vis.line(X=np.asarray([epoch_count]),
+                  Y=np.asarray([loss.final_loss.item()]), win=self.training_loss_win, name='total_loss',
+                  update='append', env=self.vis_env)
+                self.vis.line(X=np.asarray([epoch_count]),
+                  Y=np.asarray([loss.triplet_loss.item()]), win=self.training_loss_win, name='triplet_loss',
+                  update='append', env=self.vis_env)
+                self.vis.line(X=np.asarray([epoch_count]),
+                  Y=np.asarray([(loss.abs_loss+loss.vo_loss).item()]), win=self.training_loss_win, name='pose_loss',
+                  update='append', env=self.vis_env)
+                if self.n_criterion_params:
+                  for name, v in self.train_criterion.named_parameters():
+                    v = v.data.cpu().numpy()[0]
+                    self.vis.line(X=np.asarray([epoch_count]), Y=np.asarray([v]),
+                                        win=self.criterion_param_win, name=name,
+                                        update='append', env=self.vis_env)
+                self.vis.save(envs=[self.vis_env])
+
+            end = time.time()
       # Save final checkpoint
       epoch = self.config['n_epochs']
       self.save_checkpoint(epoch)
