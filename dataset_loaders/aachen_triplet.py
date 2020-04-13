@@ -48,8 +48,8 @@ class AachenTriplet(data_.Dataset):
         self.train = train
         #
         self.real_prob = real_prob if self.train else 100
-        self.style_dir = style_dir if self.train else None
-        self.available_styles = os.listdir(style_dir) if self.style_dir is not None else None
+        self.style_dir = style_dir+'_stats' if self.train else None
+        self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
         print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
                                                                                                 if self.style_dir is not None else 0))
         #
@@ -211,24 +211,12 @@ class AachenTriplet(data_.Dataset):
     def get_style(self,img_shape):
         num_styles = len(self.available_styles)
         style_idx = np.random.choice(num_styles,1)
-        style_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
-        style = load_image(style_path)
-    
-        ## stylization
-        t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \
-                                                                    or isinstance(t,transforms.CenterCrop) \
-                                                                    or isinstance(t,transforms.ToTensor) \
-                                                                    or isinstance(t,transforms.Normalize)]
-        style_t = style
+        style_stats_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
+        style_stats = np.loadtxt(style_stats_path)
+        
+        style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
 
-        for t in t_list:
-            if isinstance(t,transforms.Resize):
-                Resize = transforms.Resize(img_shape[-2:])
-                style_t = Resize(style_t)
-                continue
-            style_t = t(style_t)
-
-        return style_t
+        return style_stats
 
     def __getitem__(self, index):
         
@@ -259,23 +247,23 @@ class AachenTriplet(data_.Dataset):
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
             anchor_style = self.get_style(anchor.shape)
-            style_idx[0] = 1
+            style_idx[1] = 1
         else:
-            anchor_style = torch.zeros_like(anchor)
+            anchor_style = torch.zeros(2,512)
         
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
             pos_style = self.get_style(pos.shape)
-            style_idx[1] = 1
+            style_idx[0] = 1
         else:
-            pos_style = torch.zeros_like(pos)
+            pos_style = torch.zeros(2,512)
 
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
             neg_style = self.get_style(neg.shape)
             style_idx[2] = 1
         else:
-            neg_style = torch.zeros_like(neg)
+            neg_style = torch.zeros(2,512)
         #triplet_idx = self.triplets_idx[index]
         #print(anchor.shape,pos.shape,neg.shape)
         real_triplet = torch.stack((pos,anchor,neg),dim=0)
@@ -328,7 +316,7 @@ def main():
      )
     target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
     data_path = '../data/deepslam_data/AachenDayNight'
-    train = True
+    train = False
     dset = AachenTriplet(data_path, train,transform=transform,target_transform=target_transform,
     real_prob=75,style_dir='../data/style_selected')
     print('Loaded AachenDayNight training data, length = {:d}'.format(
@@ -340,26 +328,30 @@ def main():
     for data,poses in data_loader:
         data_shape = data[0].shape
         to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
-        real_triplet = data[0].reshape(to_shape)
+        real = data[0].reshape(to_shape)
         #triplet_idx = data[1]
-        style_triplet = data[1].reshape(to_shape)
+        style_stats = data[1].reshape(-1,2,512)
+        print(data[2])
+        print(data[1][:,:,:,0])
         style_indc = data[2].view(-1)
-    
+
+      
+   
         if sum(style_indc == 1) > 0:
             with torch.no_grad():
-                alpha = 0.5
+                alpha = 1.0
                 assert (0.0 <= alpha <= 1.0)
-                content_f = vgg(real_triplet[style_indc == 1].cuda())
-                style_f = vgg(style_triplet[style_indc == 1].cuda())
-                feat = adaptive_instance_normalization(content_f, style_f)
+                content_f = vgg(real[style_indc == 1].cuda())
+                style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
+                #style_f = vgg(style[style_indc == 1].cuda())
+                feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
                 feat = feat * alpha + content_f * (1 - alpha)
                 stylized = decoder(feat)
-                real_triplet[style_indc == 1] = stylized.cpu()[...,:real_triplet.shape[-2],:real_triplet.shape[-1]]
+                real[style_indc == 1] = stylized.cpu()
             
-        
-        show_batch(make_grid(real_triplet, nrow=3, padding=5, normalize=True))
-        
 
+        show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
+        
         
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))
         batch_count += 1

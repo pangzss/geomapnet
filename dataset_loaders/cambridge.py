@@ -46,8 +46,8 @@ class Cambridge(data.Dataset):
         
         #
         self.real_prob = real_prob if self.train else 100
-        self.style_dir = style_dir if self.train else None
-        self.available_styles = os.listdir(style_dir) if self.style_dir is not None else None
+        self.style_dir = style_dir+'_stats' if self.train else None
+        self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
         print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
                                                                                                 if self.style_dir is not None else 0))
         #
@@ -105,16 +105,20 @@ class Cambridge(data.Dataset):
         if draw > self.real_prob and self.train:
             num_styles = len(self.available_styles)
             style_idx = np.random.choice(num_styles,1)
-            style_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
-            style = load_image(style_path)
-        
+            style_stats_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
+            style_stats = np.loadtxt(style_stats_path)
+            
+            style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
+            '''
             ## stylization
             t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \
                                                                         or isinstance(t,transforms.CenterCrop) \
                                                                         or isinstance(t,transforms.ToTensor) \
                                                                         or isinstance(t,transforms.Normalize)]
-
+            '''
             img_t = self.transform(img)
+
+            '''
             style_t = style
            
             for t in t_list:
@@ -124,14 +128,14 @@ class Cambridge(data.Dataset):
                     style_t = Resize(style_t)
                     continue
                 style_t = t(style_t)
-            
-            return (img_t,style_t,torch.ones(1)),pose
+            '''
+            return (img_t,style_stats,torch.ones(1)),pose
         else:
             
             img_t = self.transform(img)
-            style_t = img_t
+            style_stats = torch.zeros((2,512))
             
-            return (img_t,style_t,torch.zeros(1)),pose
+            return (img_t,style_stats,torch.zeros(1)),pose
 
     
     def __len__(self):
@@ -178,18 +182,21 @@ def main():
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
-    N_batches = 2
+    N_batches = 10
     for batch in data_loader:
         real = batch[0][0]
-        style = batch[0][1]
+        style_stats = batch[0][1]
         style_indc = batch[0][2].squeeze(1)
+
+        
         if sum(style_indc == 1) > 0:
             with torch.no_grad():
-                alpha = 0.5
+                alpha = 1.0
                 assert (0.0 <= alpha <= 1.0)
                 content_f = vgg(real[style_indc == 1].cuda())
-                style_f = vgg(style[style_indc == 1].cuda())
-                feat = adaptive_instance_normalization(content_f, style_f)
+                style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
+                #style_f = vgg(style[style_indc == 1].cuda())
+                feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
                 feat = feat * alpha + content_f * (1 - alpha)
                 stylized = decoder(feat)
                 real[style_indc == 1] = stylized.cpu()

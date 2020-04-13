@@ -501,16 +501,16 @@ class Trainer(object):
             data_shape = data[0].shape
             to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
             real = data[0].reshape(to_shape)
-            style = data[1].reshape(to_shape)
+            style_stats = data[1].reshape(-1,2,512)
             style_indc = data[2].view(-1)
             if sum(style_indc == 1) > 0:
                 with torch.no_grad():
                     if self.alpha < 0:
                       self.alpha = np.random.rand(1).item()
                     content_f = vgg(real[style_indc == 1].cuda())
-                    style_f = vgg(style[style_indc == 1].cuda())
+                    style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
                 
-                    feat = adaptive_instance_normalization(content_f, style_f)
+                    feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
                     feat = feat * self.alpha + content_f * (1 - self.alpha)
                     stylized = decoder(feat)
                     # the output from the decoder gets padded, so only keep the portion that has
