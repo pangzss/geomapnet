@@ -1,6 +1,6 @@
 from __future__ import division
 import sys
-from torch.utils import data
+from torch.utils import data as data_
 import numpy as np
 import ntpath
 import random
@@ -48,7 +48,7 @@ class Sample:
         self.pose = pose
         self.stylized = None
 
-class AachenDayNight(data.Dataset):
+class AachenDayNight(data_.Dataset):
     def __init__(self, data_path, train,skip_images=False,real=False,transform=None, 
                 target_transform=None, style_dir = None,real_prob = 100,
                 train_split=20,seed=7,scene=None):
@@ -57,8 +57,8 @@ class AachenDayNight(data.Dataset):
         self.train = train
         #
         self.real_prob = real_prob if self.train else 100
-        self.style_dir = style_dir if self.train else None
-        self.available_styles = os.listdir(style_dir) if self.style_dir is not None else None
+        self.style_dir = style_dir+'_stats' if self.train else None
+        self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
         print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
                                                                                                 if self.style_dir is not None else 0))
         #
@@ -165,30 +165,21 @@ class AachenDayNight(data.Dataset):
         if draw > self.real_prob and self.train:
             num_styles = len(self.available_styles)
             style_idx = np.random.choice(num_styles,1)
-            style_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
-            style = load_image(style_path)
-        
-            ## stylization
-            t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \
-                                                                        or isinstance(t,transforms.CenterCrop) \
-                                                                        or isinstance(t,transforms.ToTensor) \
-                                                                        or isinstance(t,transforms.Normalize)]
+            style_stats_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
+            style_stats = np.loadtxt(style_stats_path)
+            
+            style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
 
+          
             #img_t = self.transform(img)
             img_t = self.transform(img)
-            style_t = style
-            for t in t_list:
-                if isinstance(t,transforms.Resize):
-                    Resize = transforms.Resize(img_t.shape[-2:])
-                    style_t = Resize(style_t)
-                    continue
-                style_t = t(style_t)
-
-            return (img_t,style_t,torch.ones(1)),pose
+           
+            return (img_t,style_stats,torch.ones(1)),pose
         else:
             img_t = self.transform(img)
-            style_t = img_t
-            return (img_t,style_t,torch.zeros(1)),pose
+            style_stats = torch.zeros((2,512))
+        
+            return (img_t,style_stats,torch.zeros(1)),pose
 
 
     def __len__(self):
@@ -213,7 +204,7 @@ def main():
 
     decoder.to(device)
 
-    num_workers = 2
+    num_workers = 0
     transform = transforms.Compose([
     transforms.Resize((224,224)),
     transforms.ToTensor(),
@@ -224,37 +215,42 @@ def main():
      mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
     std=[1/0.229, 1/0.224, 1/0.225]
      )
-
+    target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
     data_path = '../data/deepslam_data/AachenDayNight'
-    train = False
-    dset = AachenDayNight(data_path, train,transform=transform,real_prob=50,style_dir='../data/style_selected')
+    train = True
+    dset = AachenDayNight(data_path, train,transform=transform,target_transform=target_transform,
+    real_prob=75,style_dir='../data/style_selected')
     print('Loaded AachenDayNight training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
+    data_loader = data_.DataLoader(dset, batch_size=10, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
-    N_batches = 2
-    for batch in data_loader:
-        real = batch[0][0]
-        content_style = batch[0][1]
-        content = content_style[:,0]
-        style = content_style[:,1]
-        style_indc = batch[0][2].squeeze(1)
+    N_batches = 20
+    for data,poses in data_loader:
+        data_shape = data[0].shape
+        to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
+        real = data[0].reshape(to_shape)
+        #triplet_idx = data[1]
+        style_stats = data[1].reshape(-1,2,512)
+        style_indc = data[2].view(-1)
+
+      
+   
         if sum(style_indc == 1) > 0:
             with torch.no_grad():
-                alpha = 0.5
+                alpha = 1.0
                 assert (0.0 <= alpha <= 1.0)
-                content_f = vgg(content[style_indc == 1].cuda())
-                style_f = vgg(style[style_indc == 1].cuda())
-                feat = adaptive_instance_normalization(content_f, style_f)
+                content_f = vgg(real[style_indc == 1].cuda())
+                style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
+                #style_f = vgg(style[style_indc == 1].cuda())
+                feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
                 feat = feat * alpha + content_f * (1 - alpha)
                 stylized = decoder(feat)
                 real[style_indc == 1] = stylized.cpu()
             
 
-        show_batch(make_grid(real, nrow=2, padding=5, normalize=True))
+        show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
         
-        pose = batch[1]
         
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))
         batch_count += 1
