@@ -195,7 +195,7 @@ class MapNetOnlineCriterion(nn.Module):
 
 class TripletCriterion(nn.Module):
   def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,
-               saq=0.0, srx=0, srq=0.0,sc=0.0,sp=0.0,
+               saq=0.0, srx=0, srq=0.0,sc=0.0,
                 learn_beta=False, learn_gamma=False, 
                 learn_sigma=False):
     """
@@ -214,7 +214,7 @@ class TripletCriterion(nn.Module):
     self.CS = CX_sim
     self.margin = 0.5
     self.sc = nn.Parameter(torch.Tensor([sc]), requires_grad=learn_sigma)
-    self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
+    #self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
 
     self.t_loss_fn = t_loss_fn
     self.q_loss_fn = q_loss_fn
@@ -234,7 +234,7 @@ class TripletCriterion(nn.Module):
     s = pred.size()
  
     # contextual triplet loss
-    triplet_loss = 0.0
+    triplet_loss = torch.tensor(0.0)
     if feats is not None:
       sim_ap = self.CS(feats[:,1],feats[:,0])
       sim_an = self.CS(feats[:,1],feats[:,2])
@@ -249,8 +249,9 @@ class TripletCriterion(nn.Module):
                                             targ.view(-1, *s[2:])[:, 3:]) + \
       self.saq
 
-    vo_loss = 0.0
-    if feats is not None:
+    vo_loss = torch.tensor(0.0)
+    vo = False
+    if (feats is not None) and vo:
       # get the VOs
       pred_vos = pose_utils.calc_vos_simple(pred)
       targ_vos = pose_utils.calc_vos_simple(targ)
@@ -266,11 +267,13 @@ class TripletCriterion(nn.Module):
         self.srq
 
     # total pose loss
-    pose_loss = abs_loss + vo_loss
+
+    pose_loss = abs_loss #+ vo_loss 
 
     # triplet loss + pose loss
-    loss = torch.exp(-self.sc)*triplet_loss + self.sc + \
-            torch.exp(-self.sp)*pose_loss + self.sp
+    loss = pose_loss
+    #loss = torch.exp(-self.sc)*triplet_loss + self.sc + pose_loss
+    #+ torch.exp(-self.sp)*pose_loss + self.sp
 
     loss_ = Loss(abs_loss=abs_loss,vo_loss=vo_loss,triplet_loss=triplet_loss,final_loss=loss)
     return loss_

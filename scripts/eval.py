@@ -106,16 +106,13 @@ stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
-if args.dataset == 'AachenDayNight':
-    tforms = [transforms.Resize(crop_size)]
-else:
-    tforms = [transforms.Resize(resize)]
 # transformer
-data_transform = transforms.Compose([
-  transforms.Resize(resize),
-  #transforms.CenterCrop(crop_size),
-  transforms.ToTensor(),
-  transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1]))])
+data_transform = [transforms.Resize(resize)]
+if args.dataset == 'AachenDayNight':
+  data_transform.append(transforms.CenterCrop(crop_size))
+data_transform.append(transforms.ToTensor())
+data_transform.append(transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1])))
+data_transform = transforms.Compose(data_transform)
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 
 # read mean and stdev for un-normalizing predictions

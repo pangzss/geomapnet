@@ -35,7 +35,7 @@ class Cambridge(data.Dataset):
     
     def __init__(self, data_path, train, overfit=None, scene='ShopFacade',
                 seed=7, real=False,transform=None, target_transform=None,
-                style_dir = None,real_prob = 100,):
+                style_dir = None,real_prob = 100):
  
         np.random.seed(seed)
         self.data_path = data_path
@@ -46,7 +46,7 @@ class Cambridge(data.Dataset):
         
         #
         self.real_prob = real_prob if self.train else 100
-        self.style_dir = style_dir+'_stats' if self.train else None
+        self.style_dir = style_dir+'_stats_'+scene if self.train else None
         self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
         print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
                                                                                                 if self.style_dir is not None else 0))
@@ -104,11 +104,13 @@ class Cambridge(data.Dataset):
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
             num_styles = len(self.available_styles)
-            style_idx = np.random.choice(num_styles,1)
-            style_stats_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
-            style_stats = np.loadtxt(style_stats_path)
-            
-            style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
+            style_stats = np.empty(0)
+            while len(style_stats) == 0:
+                style_idx = np.random.choice(num_styles,1)
+                style_stats_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
+                style_stats = np.loadtxt(style_stats_path)
+                
+                style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
             '''
             ## stylization
             t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \

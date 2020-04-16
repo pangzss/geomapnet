@@ -68,7 +68,7 @@ dropout = section.getfloat('dropout')
 color_jitter = section.getfloat('color_jitter', 0)
 
 sc = section.getfloat('sigma_cx', 0.0)
-sp = section.getfloat('sigma_pose',0.0)
+#sp = section.getfloat('sigma_pose',0.0)
 
 sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
@@ -124,7 +124,7 @@ elif args.model.find('mapnet') >= 0:
     train_criterion = MapNetCriterion(**kwargs)
     val_criterion = MapNetCriterion()
 elif args.model == 'trinet':
-  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, sp=sp, learn_beta=args.learn_beta,
+  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, learn_beta=args.learn_beta,
                 learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
   train_criterion = TripletCriterion(**kwargs)
   val_criterion = TripletCriterion()
@@ -139,9 +139,8 @@ if args.learn_beta and hasattr(train_criterion, 'sax') and \
 if args.learn_gamma and hasattr(train_criterion, 'srx') and \
     hasattr(train_criterion, 'srq'):
   param_list.append({'params': [train_criterion.srx, train_criterion.srq]})
-if args.learn_sigma and hasattr(train_criterion, 'sc') and \
-    hasattr(train_criterion, 'sp'):
-  param_list.append({'params': [train_criterion.sc, train_criterion.sp]})
+if args.learn_sigma and hasattr(train_criterion, 'sc'):
+  param_list.append({'params': [train_criterion.sc]})
 optimizer = Optimizer(params=param_list, method=opt_method, base_lr=lr,
   weight_decay=weight_decay, **optim_config)
 
