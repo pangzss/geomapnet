@@ -13,7 +13,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 class Loss:
-  def __init__(self, abs_loss=torch.tensor(0.0), vo_loss=torch.tensor(0.0), 
+  def __init__(self, abs_loss=(torch.tensor(0.0),torch.tensor(0.0)), vo_loss=torch.tensor(0.0), 
               triplet_loss=torch.tensor(0.0),final_loss=torch.tensor(0.0)):
         self.abs_loss = abs_loss
         self.vo_loss = vo_loss
@@ -90,15 +90,10 @@ class MapNetCriterion(nn.Module):
     """
     # absolute pose loss
     s = pred.size()
+    t_loss = torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],targ.view(-1, *s[2:])[:, :3]) + self.sax
+    q_loss = torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, *s[2:])[:, 3:],targ.view(-1, *s[2:])[:, 3:]) + self.saq
 
-    abs_loss =\
-      torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],
-                                            targ.view(-1, *s[2:])[:, :3]) + \
-      self.sax + \
-      torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, *s[2:])[:, 3:],
-                                            targ.view(-1, *s[2:])[:, 3:]) + \
-      self.saq
-
+    abs_loss = t_loss + q_loss
     # get the VOs
     pred_vos = pose_utils.calc_vos_simple(pred)
     targ_vos = pose_utils.calc_vos_simple(targ)
@@ -114,7 +109,7 @@ class MapNetCriterion(nn.Module):
       self.srq
 
     # total loss
-    loss_ = Loss(abs_loss=abs_loss,vo_loss=vo_loss,final_loss=abs_loss+vo_loss)
+    loss_ = Loss(abs_loss=(t_loss,q_loss),vo_loss=vo_loss,final_loss=abs_loss+vo_loss)
 
     return loss_
 
@@ -240,40 +235,32 @@ class TripletCriterion(nn.Module):
       sim_an = self.CS(feats[:,1],feats[:,2])
       triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
     # absolute pose loss
+    s = pred.size()
+    t_loss = torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],targ.view(-1, *s[2:])[:, :3]) + self.sax
+    q_loss = torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, *s[2:])[:, 3:],targ.view(-1, *s[2:])[:, 3:]) + self.saq
 
-    abs_loss =\
-      torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],
-                                            targ.view(-1, *s[2:])[:, :3]) + \
-      self.sax + \
-      torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, *s[2:])[:, 3:],
-                                            targ.view(-1, *s[2:])[:, 3:]) + \
-      self.saq
+    abs_loss = t_loss + q_loss
 
-    vo_loss = torch.tensor(0.0)
-    vo = False
-    if (feats is not None) and vo:
-      # get the VOs
-      pred_vos = pose_utils.calc_vos_simple(pred)
-      targ_vos = pose_utils.calc_vos_simple(targ)
+    # vo loss 
+    # get the VOs
+    pred_vos = pose_utils.calc_vos_simple(pred)
+    targ_vos = pose_utils.calc_vos_simple(targ)
 
-      # VO loss
-      s = pred_vos.size()
-      vo_loss = \
-        torch.exp(-self.srx) * self.t_loss_fn(pred_vos.view(-1, *s[2:])[:, :3],
-                                              targ_vos.view(-1, *s[2:])[:, :3]) + \
-        self.srx + \
-        torch.exp(-self.srq) * self.q_loss_fn(pred_vos.view(-1, *s[2:])[:, 3:],
-                                              targ_vos.view(-1, *s[2:])[:, 3:]) + \
-        self.srq
+    s = pred_vos.size()
+    vo_loss = \
+      torch.exp(-self.srx) * self.t_loss_fn(pred_vos.view(-1, *s[2:])[:, :3],
+                                            targ_vos.view(-1, *s[2:])[:, :3]) + \
+      self.srx + \
+      torch.exp(-self.srq) * self.q_loss_fn(pred_vos.view(-1, *s[2:])[:, 3:],
+                                            targ_vos.view(-1, *s[2:])[:, 3:]) + \
+      self.srq
 
     # total pose loss
 
-    pose_loss = abs_loss #+ vo_loss 
+    pose_loss = abs_loss + vo_loss 
 
     # triplet loss + pose loss
-    loss = pose_loss
-    #loss = torch.exp(-self.sc)*triplet_loss + self.sc + pose_loss
-    #+ torch.exp(-self.sp)*pose_loss + self.sp
+    loss = torch.exp(-self.sc)*triplet_loss + self.sc + pose_loss
 
-    loss_ = Loss(abs_loss=abs_loss,vo_loss=vo_loss,triplet_loss=triplet_loss,final_loss=loss)
+    loss_ = Loss(abs_loss=(t_loss,q_loss),vo_loss=vo_loss,triplet_loss=triplet_loss,final_loss=loss)
     return loss_

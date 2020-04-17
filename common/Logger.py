@@ -4,7 +4,7 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
  
 import sys
-
+import numpy as np
 class Logger(object):
     def __init__(self, filename="Default.log"):
         self.terminal = sys.stdout
@@ -43,3 +43,23 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
+
+class MedianMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.pos_list = []
+        self.ori_list = []
+        self.median_pos = 0.0
+        self.median_ori = 0.0
+    def update(self, pos,ori):
+        self.pos_list.append(pos)
+        self.ori_list.append(ori)
+    def get_median(self):
+        self.pos_list = np.array(self.pos_list)
+        self.ori_list = np.array(self.ori_list)
+        self.median_pos = np.median(self.pos_list)
+        self.median_ori = np.median(self.ori_list)

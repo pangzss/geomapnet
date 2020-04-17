@@ -157,8 +157,8 @@ class Trainer(object):
               'ylabel': 'loss'}, env=self.vis_env)
       
       self.val_loss_win = 'val_loss_win'
-      self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.val_loss_win,
-        opts={'legend': ['val_loss'], 'xlabel': 'epochs',
+      self.vis.line(X=np.zeros((1,2)), Y=np.zeros((1,2)), win=self.val_loss_win,
+        opts={'legend': ['val_median_pos','val_median_ori'], 'xlabel': 'epochs',
               'ylabel': 'loss'}, env=self.vis_env)
 
       self.lr_win = 'lr_win'
@@ -228,7 +228,7 @@ class Trainer(object):
       collate_fn=safe_collate)
     if self.config['do_val']:
       self.val_loader = torch.utils.data.DataLoader(val_dataset,
-        batch_size=self.config['batch_size'], shuffle=self.config['shuffle'],
+        batch_size=1, shuffle=self.config['shuffle'],
         num_workers=self.config['num_workers'], pin_memory=True,
         collate_fn=safe_collate)
     else:
@@ -385,7 +385,8 @@ class Trainer(object):
       :param lstm: whether the model is an LSTM
       :return: 
       """
-      val_loss_list = []
+      val_pos_list = []
+      val_ori_list = []
       early_stop_counter = 0
       saved_list = []
       for epoch in range(self.start_epoch, self.config['n_epochs']+1):
@@ -394,11 +395,9 @@ class Trainer(object):
                                         (epoch == self.config['n_epochs']-1) or 
                                         (epoch == self.config['n_epochs']) ):
                       
-          val_batch_time = Logger.AverageMeter()
-          val_loss = Logger.AverageMeter()
+          val_loss = Logger.MedianMeter()
           self.model.eval()
-          end = time.time()
-          val_data_time = Logger.AverageMeter()
+
           for batch_idx, (data, target) in enumerate(self.val_loader):
 
             imgs = data[0]
@@ -407,58 +406,51 @@ class Trainer(object):
             #from torchvision.utils import make_grid
             #show_batch(make_grid(imgs.reshape(-1,3,256,455), nrow=6, padding=5, normalize=True))
             #sys.exit(-1)
-
-            val_data_time.update(time.time() - end)
-            
             kwargs = dict(target=target, criterion=self.val_criterion,
               optim=self.optimizer, train=False)
       
-            end = time.time()
             loss,_ = step_feedfwd(imgs, self.model, self.config['cuda'], trinet=trinet,
               **kwargs)
-            val_loss.update(loss.abs_loss.item())
-  
-            val_batch_time.update(time.time() - end)
+            val_loss.update(loss.abs_loss[0].item(),loss.abs_loss[1].item())
+          
+          val_loss.get_median()
+          val_median_pos,val_median_ori = val_loss.median_pos, val_loss.median_ori
 
-            if batch_idx % self.config['print_freq'] == 0:
-              print('Val {:s}: Epoch {:d}\t' \
-                    'Batch {:d}/{:d}\t' \
-                    'Data time {:.4f} ({:.4f})\t' \
-                    'Step time {:.4f} ({:.4f})\t' \
-                    'Loss {:f}' \
-                .format(self.experiment, epoch, batch_idx, len(self.val_loader)-1,
-                val_data_time.val, val_data_time.avg, val_batch_time.val,
-                val_batch_time.avg, loss.abs_loss.item()))
-              if self.config['log_visdom']:
-                self.vis.save(envs=[self.vis_env])
+          print('Val {:s}: Epoch {:d}, Val_median_pos {:f}: Val_median_ori {:f}:'.format(self.experiment,
+            epoch,val_median_pos,val_median_ori))
 
-            end = time.time()
-
-          print('Val {:s}: Epoch {:d}, val_loss {:f}'.format(self.experiment,
-            epoch, val_loss.avg))
-          val_loss_list.append(val_loss.avg)
+          val_pos_list.append(val_median_pos)
+          val_ori_list.append(val_median_ori)
 
           if self.config['log_visdom']:
             self.vis.line(X=np.asarray([epoch]),
-              Y=np.asarray([val_loss.avg]), win=self.val_loss_win, name='val_loss',
+              Y=np.asarray([val_median_pos]), win=self.val_loss_win, name='val_median_pos',
+              update='append', env=self.vis_env)
+            self.vis.save(envs=[self.vis_env])
+
+            self.vis.line(X=np.asarray([epoch]),
+              Y=np.asarray([val_median_ori]), win=self.val_loss_win, name='val_median_ori',
               update='append', env=self.vis_env)
             self.vis.save(envs=[self.vis_env])
 
 
          # SAVE CHECKPOINT
-        if len(val_loss_list)>=2 and ((epoch % self.config['val_freq'] == 0) or
+        if len(val_pos_list)>=2 and ((epoch % self.config['val_freq'] == 0) or
                                         (epoch == self.config['n_epochs']-1)):
           # when val_freq == snapshot, it means that we want to save the model when finding a good val
           # when val_freq != snapshot, usually we do val and the saving randomly, and only refer to the model at
           # the final epoch as the peneulmate version. 
           if self.config['val_freq'] == self.config['snapshot']:
-            curr_val = val_loss_list[-1]
-            past_best = min(val_loss_list[:-1])
-            if curr_val < past_best:
+            curr_pos = val_pos_list[-1]
+            curr_ori = val_ori_list[-1]
+            past_best_pos = min(val_pos_list[:-1])
+            past_best_ori = min(val_ori_list[:-1])
+
+            if (curr_pos < past_best_pos) and (curr_ori < past_best_ori):
 
               saved_list.append(epoch)
 
-              print(f'Validation loss decreased ({past_best:.6f} --> {curr_val:.6f}). Zero counter and save model ...')
+              print(f'Validation loss decreased ({past_best_pos:.6f} --> {curr_pos:.6f}) ({past_best_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
               self.save_checkpoint(epoch)
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
@@ -548,7 +540,7 @@ class Trainer(object):
                 format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
                 train_data_time.val, train_data_time.avg, train_batch_time.val,
                 train_batch_time.avg, 
-                loss.triplet_loss.item(),(loss.abs_loss+loss.vo_loss).item(),
+                loss.triplet_loss.item(),(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item(),
                 loss.final_loss.item(), lr))
 
               if self.config['log_visdom']:
@@ -559,7 +551,7 @@ class Trainer(object):
                   Y=np.asarray([loss.triplet_loss.item()]), win=self.training_loss_win, name='triplet_loss',
                   update='append', env=self.vis_env)
                 self.vis.line(X=np.asarray([epoch_count]),
-                  Y=np.asarray([(loss.abs_loss+loss.vo_loss).item()]), win=self.training_loss_win, name='pose_loss',
+                  Y=np.asarray([(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item()]), win=self.training_loss_win, name='pose_loss',
                   update='append', env=self.vis_env)
                 if self.n_criterion_params:
                   for name, v in self.train_criterion.named_parameters():
