@@ -416,7 +416,7 @@ class Trainer(object):
           val_loss.get_median()
           val_median_pos,val_median_ori = val_loss.median_pos, val_loss.median_ori
 
-          print('Val {:s}: Epoch {:d}, Val_median_pos {:f}: Val_median_ori {:f}:'.format(self.experiment,
+          print('Val {:s}: Epoch {:d}, Val_median_pos {:f}, Val_median_ori {:f}'.format(self.experiment,
             epoch,val_median_pos,val_median_ori))
 
           val_pos_list.append(val_median_pos)
@@ -446,7 +446,11 @@ class Trainer(object):
             past_best_pos = min(val_pos_list[:-1])
             past_best_ori = min(val_ori_list[:-1])
 
-            if (curr_pos < past_best_pos) and (curr_ori < past_best_ori):
+            relative_pos_change = -(curr_pos - past_best_pos)/past_best_pos
+            relative_ori_change = -(curr_ori - past_best_ori)/past_best_ori
+
+            #if (curr_pos < past_best_pos) and (curr_ori < past_best_ori):
+            if relative_pos_change + relative_ori_change > 0:
 
               saved_list.append(epoch)
 
