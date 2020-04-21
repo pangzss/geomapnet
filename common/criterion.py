@@ -227,7 +227,7 @@ class TripletCriterion(nn.Module):
     pred = output[0]
     feats = output[1]
     s = pred.size()
- 
+
     # contextual triplet loss
     triplet_loss = torch.tensor(0.0)
     if feats is not None:
@@ -236,24 +236,26 @@ class TripletCriterion(nn.Module):
       triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
     # absolute pose loss
     s = pred.size()
-    t_loss = torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],targ.view(-1, *s[2:])[:, :3]) + self.sax
-    q_loss = torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, *s[2:])[:, 3:],targ.view(-1, *s[2:])[:, 3:]) + self.saq
+    t_loss = torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, s[-1])[:, :3],targ.view(-1, s[-1])[:, :3]) + self.sax
+    q_loss = torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, s[-1])[:, 3:],targ.view(-1, s[-1])[:, 3:]) + self.saq
 
     abs_loss = t_loss + q_loss
 
     # vo loss 
     # get the VOs
-    pred_vos = pose_utils.calc_vos_simple(pred)
-    targ_vos = pose_utils.calc_vos_simple(targ)
+    vo_loss = torch.tensor(0.0)
+    if feats is not None:
+      pred_vos = pose_utils.calc_vos_simple(pred)
+      targ_vos = pose_utils.calc_vos_simple(targ)
 
-    s = pred_vos.size()
-    vo_loss = \
-      torch.exp(-self.srx) * self.t_loss_fn(pred_vos.view(-1, *s[2:])[:, :3],
-                                            targ_vos.view(-1, *s[2:])[:, :3]) + \
-      self.srx + \
-      torch.exp(-self.srq) * self.q_loss_fn(pred_vos.view(-1, *s[2:])[:, 3:],
-                                            targ_vos.view(-1, *s[2:])[:, 3:]) + \
-      self.srq
+      s = pred_vos.size()
+      vo_loss = \
+        torch.exp(-self.srx) * self.t_loss_fn(pred_vos.view(-1, *s[2:])[:, :3],
+                                              targ_vos.view(-1, *s[2:])[:, :3]) + \
+        self.srx + \
+        torch.exp(-self.srq) * self.q_loss_fn(pred_vos.view(-1, *s[2:])[:, 3:],
+                                              targ_vos.view(-1, *s[2:])[:, 3:]) + \
+        self.srq
 
     # total pose loss
 

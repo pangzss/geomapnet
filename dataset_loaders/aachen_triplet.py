@@ -42,9 +42,9 @@ class AachenTriplet(data_.Dataset):
         self.data_path = data_path
         # MostSimPairs lists 20 other images that share the most number of 
         # points with the indexed image.
-        self.MostSimPairs_path = '../data/triplet/MostSimPairs.txt'
+        self.MostSimPairs_path = '../data/triplet/Aachen/MostSimPairs.txt'
         # AllPairs lists all the images that share points with the indexed image
-        self.AllPairs_path = '../data/triplet/AllPairs.txt'
+        self.AllPairs_path = '../data/triplet/Aachen/AllPairs.txt'
         self.train = train
         #
         self.real_prob = real_prob if self.train else 100
@@ -64,7 +64,7 @@ class AachenTriplet(data_.Dataset):
         self.transform = transform
         self.target_transform = target_transform
         
-        if not os.path.exists('../data/triplet/MostSimPairs_dict.txt'):
+        if not os.path.exists('../data/triplet/Aachen/MostSimPairs_dict.txt'):
             MostSimPairs_file = open(self.MostSimPairs_path)
             lines = MostSimPairs_file.readlines()
             MostSimPairs = [line.split(' ') for line in lines]
@@ -73,13 +73,13 @@ class AachenTriplet(data_.Dataset):
                 if pair[0] not in list(MostSimPairs_dict.keys()):
                     MostSimPairs_dict[pair[0]] = []
                 MostSimPairs_dict[pair[0]].append(pair[1].strip())
-            with open('../data/triplet/MostSimPairs_dict.txt', 'w') as f:
+            with open('../data/triplet/Aachen/MostSimPairs_dict.txt', 'w') as f:
                 print(MostSimPairs_dict, file=f)
         else:
-            with open('../data/triplet/MostSimPairs_dict.txt', 'r') as f:
+            with open('../data/triplet/Aachen/MostSimPairs_dict.txt', 'r') as f:
                 MostSimPairs_dict = eval(f.read())
         
-        if not os.path.exists('../data/triplet/AllPairs_dict.txt'):
+        if not os.path.exists('../data/triplet/Aachen/AllPairs_dict.txt'):
             AllPairs_file = open(self.AllPairs_path)
             lines = AllPairs_file.readlines()
             AllPairs = [line.split(' ') for line in lines]
@@ -88,10 +88,10 @@ class AachenTriplet(data_.Dataset):
                 if pair[0] not in list(AllPairs_dict.keys()):
                     AllPairs_dict[pair[0]] = []
                 AllPairs_dict[pair[0]].append(pair[1].strip())
-            with open('../data/triplet/AllPairs_dict.txt', 'w') as f:
+            with open('../data/triplet/Aachen/AllPairs_dict.txt', 'w') as f:
                 print(AllPairs_dict, file=f)
         else:
-            with open('../data/triplet/AllPairs_dict.txt', 'r') as f:
+            with open('../data/triplet/Aachen/AllPairs_dict.txt', 'r') as f:
                 AllPairs_dict = eval(f.read())
 
         nvm_file_name = os.path.join(self.data_path,'3D_model','aachen_cvpr2018_db.nvm')

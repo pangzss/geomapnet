@@ -220,10 +220,16 @@ elif args.model.find('mapnet') >= 0:
     train_set = MF(train=True, real=real, **kwargs)
     val_set = MF(train=False, real=real, **val_kwargs)
 elif args.model == 'trinet':
-  from dataset_loaders.aachen_triplet import AachenTriplet
-  kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
-  train_set = AachenTriplet(train=True, **kwargs)
-  val_set = AachenTriplet(train=False, **val_kwargs)
+  if args.dataset == 'AachenDayNight':
+    from dataset_loaders.aachen_triplet import AachenTriplet
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    train_set = AachenTriplet(train=True, **kwargs)
+    val_set = AachenTriplet(train=False, **val_kwargs)
+  elif args.dataset == 'Cambridge':
+    from dataset_loaders.cambridge_triplet import CambridgeTriplet
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    train_set = CambridgeTriplet(train=True, **kwargs)
+    val_set = CambridgeTriplet(train=False, **val_kwargs)
 else:
   raise NotImplementedError
 

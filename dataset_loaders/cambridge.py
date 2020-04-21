@@ -178,7 +178,7 @@ def main():
     data_path = '../data/deepslam_data/Cambridge'
     scene = 'ShopFacade'
     train = True
-    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=50,style_dir='../data/style_selected')
+    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=50,style_dir='../data/style_portraits')
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
