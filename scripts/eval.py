@@ -26,6 +26,8 @@ from torch.utils.data import DataLoader
 from torchvision import transforms, models
 import pickle
 
+
+
 # config
 parser = argparse.ArgumentParser(description='Evaluation script for PoseNet and'
                                              'MapNet variants')
@@ -224,16 +226,15 @@ t_loss = np.asarray([t_criterion(p, t) for p, t in zip(pred_poses[:, :3],
                                                        targ_poses[:, :3])])
 q_loss = np.asarray([q_criterion(p, t) for p, t in zip(pred_poses[:, 3:],
                                                        targ_poses[:, 3:])])
-#eval_func = np.mean if args.dataset == 'RobotCar' else np.median
-#eval_str  = 'Mean' if args.dataset == 'RobotCar' else 'Median'
-#t_loss = eval_func(t_loss)
-#q_loss = eval_func(q_loss)
-#print '{:s} error in translation = {:3.2f} m\n' \
-#      '{:s} error in rotation    = {:3.2f} degrees'.format(eval_str, t_loss,
+total_num = float(t_loss.shape[0])
+fine_localized = (np.sum(np.logical_and(t_loss < 0.25, q_loss < 2.0)) / total_num)*100
+medium_localized = (np.sum(np.logical_and(t_loss < 0.5, q_loss < 5.0)) / total_num)*100
+coarse_localized = (np.sum(np.logical_and(t_loss < 5.0, q_loss < 10.0)) / total_num)*100
+
 print('Error in translation: median {:3.2f} m,  mean {:3.2f} m\n' \
     'Error in rotation: median {:3.2f} degrees, mean {:3.2f} degree'.format(np.median(t_loss), np.mean(t_loss),
                     np.median(q_loss), np.mean(q_loss)))
-
+print('Fine {:.2f}, Medium {:.2f}, Coarse {:.2f}'.format(fine_localized,medium_localized,coarse_localized))
 
 # create figure object
 fig = plt.figure()
