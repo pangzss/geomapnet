@@ -181,7 +181,7 @@ def main():
     dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=50,style_dir='../data/style_portraits')
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
+    data_loader = data.DataLoader(dset, batch_size=5, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
     N_batches = 10
@@ -204,7 +204,7 @@ def main():
                 real[style_indc == 1] = stylized.cpu()
             
 
-        show_batch(make_grid(real, nrow=2, padding=5, normalize=True))
+        show_batch(make_grid(real, nrow=5, padding=5, normalize=True))
         
         pose = batch[1]
         

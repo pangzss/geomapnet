@@ -175,8 +175,8 @@ class CambridgeTriplet(data_.Dataset):
                     triplet.neg_paths = [os.path.join(self.data_path,self.scene,neg) for neg in neg_names]
                     triplet.neg_poses = [imgs_poses[neg] for neg in neg_names]
 
-            
-
+                    if len(triplet.pos_paths) == 0 or len(triplet.neg_paths) == 0:
+                        continue
                 self.triplets.append(triplet)
             print('loaded {} triplets for {} data points'.format(len(self.triplets),len(self.points)))
 
