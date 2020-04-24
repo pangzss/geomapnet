@@ -552,7 +552,7 @@ class Trainer(object):
                 format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
                 train_data_time.val, train_data_time.avg, train_batch_time.val,
                 train_batch_time.avg, 
-                loss.triplet_loss.item(),loss.triplet_loss.item(),(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item(),
+                loss.triplet_loss.item(),loss.perceptual_loss.item(),(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item(),
                 loss.final_loss.item(), lr))
 
               if self.config['log_visdom']:

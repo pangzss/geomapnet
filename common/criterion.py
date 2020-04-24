@@ -228,8 +228,8 @@ class TripletCriterion(nn.Module):
     pred = output[0]
     feats = output[1]
     s = pred.size()
-    if len(s) == 3:
-      pred = pred[:,:3]
+    if s[1] == 4:
+      pred = pred[:,:3].clone()
     # contextual triplet loss
     triplet_loss = torch.tensor(0.0)
     if feats is not None:
@@ -238,7 +238,7 @@ class TripletCriterion(nn.Module):
       triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
     # perceptual loss
     perceptual_loss = torch.tensor(0.0)
-    if feats is not None:
+    if feats is not None and s[1]==4:
       real_feats = feats[:,1]
       style_feats = feats[:,3]
 
