@@ -159,13 +159,14 @@ class CambridgeTriplet(data_.Dataset):
 
                 if anchor_name in list(MostSimPairs_dict.keys()) and \
                     anchor_name in list(AllPairs_dict.keys()):
-                    pos_names = set(MostSimPairs_dict[anchor_name]).intersection(set(kept_images))
+                    pos_names = set(MostSimPairs_dict[anchor_name]).intersection(set(kept_images)) - set([anchor_name])
 
                     #print('pos:',pos_names)
                     # only keep those neg in training or val set
                     all_pos_names = set(AllPairs_dict[anchor_name]).intersection(set(kept_images))
                     # no shared points and in training or val set
-                    neg_names = set(kept_images) - all_pos_names
+                    neg_names = set(kept_images) - all_pos_names -set([anchor_name])
+
                     #print('neg:',neg_names)
 
                     triplet.pos_paths = [os.path.join(self.data_path,self.scene,pos) for pos in pos_names]
@@ -195,6 +196,7 @@ class CambridgeTriplet(data_.Dataset):
             #print('anchor: ',triplet.anchor_path)
             anchor = load_image(triplet.anchor_path)
             anchor_pose = triplet.anchor_pose
+           
 
             pos_idx = np.random.randint(low=0,high=len(triplet.pos_paths),size=1).item()
             pos = load_image(triplet.pos_paths[pos_idx])
@@ -292,13 +294,13 @@ def main():
     scene = 'ShopFacade'
     train = True
     dset = CambridgeTriplet(data_path, train,scene=scene,transform=transform, target_transform=target_transform,
-    real_prob=50,style_dir='../data/style_selected')
+    real_prob=100,style_dir='../data/style_portraits')
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data_.DataLoader(dset, batch_size=10, shuffle=True,
+    data_loader = data_.DataLoader(dset, batch_size=5, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
-    N_batches = 10
+    N_batches = 5
     for data,poses in data_loader:
         data_shape = data[0].shape
         to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
@@ -320,7 +322,7 @@ def main():
                 real[style_indc == 1] = stylized.cpu()
             
 
-        show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
+        show_batch(make_grid(real, nrow=3, padding=5, normalize=True))
         
         
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))

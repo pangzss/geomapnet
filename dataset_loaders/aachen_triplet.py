@@ -170,13 +170,13 @@ class AachenTriplet(data_.Dataset):
 
             if anchor_name in list(MostSimPairs_dict.keys()) and \
                 anchor_name in list(AllPairs_dict.keys()):
-                pos_names = set(MostSimPairs_dict[anchor_name]).intersection(set(kept_images))
+                pos_names = set(MostSimPairs_dict[anchor_name]).intersection(set(kept_images)) - set([anchor_name])
 
                 #print('pos:',pos_names)
                 # only keep those neg in training or val set
                 all_pos_names = set(AllPairs_dict[anchor_name]).intersection(set(kept_images))
                 # no shared points and in training or val set
-                neg_names = set(kept_images) - all_pos_names
+                neg_names = set(kept_images) - all_pos_names -set([anchor_name])
                 #print('neg:',neg_names)
                 if pos_names and neg_names:
                     triplet.pos_paths = [os.path.join(self.data_path,pos) for pos in pos_names]
