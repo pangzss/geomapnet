@@ -256,7 +256,7 @@ class CambridgeTriplet(data_.Dataset):
             return (img_t, 0,0),pose
     
     def __len__(self):
-        return len(self.points)
+        return len(self.triplets)
     
     
 def main():
