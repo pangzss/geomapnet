@@ -14,10 +14,11 @@ from torch import nn
 import torch.nn.functional as F
 class Loss:
   def __init__(self, abs_loss=(torch.tensor(0.0),torch.tensor(0.0)), vo_loss=torch.tensor(0.0), 
-              triplet_loss=torch.tensor(0.0),final_loss=torch.tensor(0.0)):
+              triplet_loss=torch.tensor(0.0),perceptual_loss=torch.tensor(0.0),final_loss=torch.tensor(0.0)):
         self.abs_loss = abs_loss
         self.vo_loss = vo_loss
         self.triplet_loss = triplet_loss
+        self.perceptual_loss = perceptual_loss
         self.final_loss = final_loss
 class QuaternionLoss(nn.Module):
   """
@@ -190,7 +191,7 @@ class MapNetOnlineCriterion(nn.Module):
 
 class TripletCriterion(nn.Module):
   def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,
-               saq=0.0, srx=0, srq=0.0,sc=0.0,
+               saq=0.0, srx=0, srq=0.0,sc=0.0, sp=0.0,
                 learn_beta=False, learn_gamma=False, 
                 learn_sigma=False):
     """
@@ -209,7 +210,7 @@ class TripletCriterion(nn.Module):
     self.CS = CX_sim
     self.margin = 0.5
     self.sc = nn.Parameter(torch.Tensor([sc]), requires_grad=learn_sigma)
-    #self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
+    self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
 
     self.t_loss_fn = t_loss_fn
     self.q_loss_fn = q_loss_fn
@@ -227,13 +228,32 @@ class TripletCriterion(nn.Module):
     pred = output[0]
     feats = output[1]
     s = pred.size()
-
+    if len(s) == 3:
+      pred = pred[:,:3]
     # contextual triplet loss
     triplet_loss = torch.tensor(0.0)
     if feats is not None:
       sim_ap = self.CS(feats[:,1],feats[:,0])
       sim_an = self.CS(feats[:,1],feats[:,2])
       triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
+    # perceptual loss
+    perceptual_loss = torch.tensor(0.0)
+    if feats is not None:
+      real_feats = feats[:,1]
+      style_feats = feats[:,3]
+
+      N,C,H,W = real_feats.shape
+
+      real_feats = torch.reshape(real_feats,(N,C,H*W))
+      style_feats = torch.reshape(style_feats,(N,C,H*W))
+
+      real_feats_sq = torch.sum(real_feats**2,dim=-1)
+      style_feats_sq = torch.sum(style_feats**2,dim=-1)
+      product = torch.sum(real_feats*style_feats,dim=-1)
+
+      perceptual_loss = torch.sum((real_feats_sq - 2*product + style_feats_sq),dim=1)/(C*H*W)
+      perceptual_loss = torch.mean(perceptual_loss)
+
     # absolute pose loss
     s = pred.size()
     t_loss = torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, s[-1])[:, :3],targ.view(-1, s[-1])[:, :3]) + self.sax
@@ -262,7 +282,9 @@ class TripletCriterion(nn.Module):
     pose_loss = abs_loss + vo_loss 
 
     # triplet loss + pose loss
-    loss = torch.exp(-self.sc)*triplet_loss + self.sc + pose_loss
+    loss = torch.exp(-self.sc)*triplet_loss + self.sc + \
+           torch.exp(-self.sp)*perceptual_loss + self.sp + \
+           pose_loss
 
-    loss_ = Loss(abs_loss=(t_loss,q_loss),vo_loss=vo_loss,triplet_loss=triplet_loss,final_loss=loss)
+    loss_ = Loss(abs_loss=(t_loss,q_loss),vo_loss=vo_loss,triplet_loss=triplet_loss,perceptual_loss=perceptual_loss,final_loss=loss)
     return loss_

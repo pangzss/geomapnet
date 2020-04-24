@@ -178,10 +178,10 @@ def main():
     data_path = '../data/deepslam_data/Cambridge'
     scene = 'ShopFacade'
     train = True
-    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=50,style_dir='../data/style_portraits')
+    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=0,style_dir='../data/style_pbn')
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data.DataLoader(dset, batch_size=5, shuffle=True,
+    data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
     N_batches = 10
@@ -207,7 +207,7 @@ def main():
         show_batch(make_grid(real, nrow=5, padding=5, normalize=True))
         
         pose = batch[1]
-        
+         
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))
         batch_count += 1
         if batch_count >= N_batches:

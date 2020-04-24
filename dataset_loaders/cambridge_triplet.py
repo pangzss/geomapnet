@@ -45,7 +45,7 @@ class CambridgeTriplet(data_.Dataset):
     
     def __init__(self, data_path, train, overfit=None, scene='ShopFacade',
                 seed=7, real=False,transform=None, target_transform=None,
-                style_dir = None,real_prob = 100):
+                style_dir = None,real_prob = 100, min_perceptual=False):
  
         np.random.seed(seed)
         self.data_path = data_path
@@ -69,6 +69,8 @@ class CambridgeTriplet(data_.Dataset):
                                                                                                 if self.style_dir is not None else 0))
         #
         
+        self.min_perceptual = min_perceptual
+
         # load triplets
         if not os.path.exists(os.path.join(self.triplet_path, 'MostSimPairs_dict.txt')):
             MostSimPairs_file = open(self.MostSimPairs_path)
@@ -216,26 +218,35 @@ class CambridgeTriplet(data_.Dataset):
             pos = self.transform(pos)
             neg = self.transform(neg)
             
-            style_idx = torch.zeros(3)
-            draw = np.random.randint(low=1,high=101,size=1)
-            if draw > self.real_prob and self.train:
+            if not self.min_perceptual:
+                style_idx = torch.zeros(3)
+                draw = np.random.randint(low=1,high=101,size=1)
+                if draw > self.real_prob and self.train:
+                    anchor_style = self.get_style(anchor.shape)
+                    style_idx[1] = 1
+                else:
+                    anchor_style = torch.zeros(2,512)
+                
+                draw = np.random.randint(low=1,high=101,size=1)
+                if draw > self.real_prob and self.train:
+                    pos_style = self.get_style(pos.shape)
+                    style_idx[0] = 1
+                else:
+                    pos_style = torch.zeros(2,512)
+
+                draw = np.random.randint(low=1,high=101,size=1)
+                if draw > self.real_prob and self.train:
+                    neg_style = self.get_style(neg.shape)
+                    style_idx[2] = 1
+                else:
+                    neg_style = torch.zeros(2,512)
+            else:
+                style_idx = torch.zeros(3)
+                
                 anchor_style = self.get_style(anchor.shape)
                 style_idx[1] = 1
-            else:
-                anchor_style = torch.zeros(2,512)
             
-            draw = np.random.randint(low=1,high=101,size=1)
-            if draw > self.real_prob and self.train:
-                pos_style = self.get_style(pos.shape)
-                style_idx[0] = 1
-            else:
                 pos_style = torch.zeros(2,512)
-
-            draw = np.random.randint(low=1,high=101,size=1)
-            if draw > self.real_prob and self.train:
-                neg_style = self.get_style(neg.shape)
-                style_idx[2] = 1
-            else:
                 neg_style = torch.zeros(2,512)
             #triplet_idx = self.triplets_idx[index]
             #print(anchor.shape,pos.shape,neg.shape)
@@ -293,11 +304,12 @@ def main():
     data_path = '../data/deepslam_data/Cambridge'
     scene = 'ShopFacade'
     train = True
+    min_perceptual = True
     dset = CambridgeTriplet(data_path, train,scene=scene,transform=transform, target_transform=target_transform,
-    real_prob=100,style_dir='../data/style_portraits')
+    real_prob=100,style_dir='../data/style_portraits',min_perceptual=min_perceptual)
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data_.DataLoader(dset, batch_size=5, shuffle=True,
+    data_loader = data_.DataLoader(dset, batch_size=10, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
     N_batches = 5
@@ -318,11 +330,16 @@ def main():
                 #style_f = vgg(style[style_indc == 1].cuda())
                 feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
                 feat = feat * alpha + content_f * (1 - alpha)
-                stylized = decoder(feat)
-                real[style_indc == 1] = stylized.cpu()
-            
+                stylized = decoder(feat).cpu()
+                if not min_perceptual:
+                      real[style_indc == 1] = stylized
 
-        show_batch(make_grid(real, nrow=3, padding=5, normalize=True))
+        real = real.reshape(data_shape)
+        if min_perceptual:
+            stylized = stylized[:,None,...]
+            real = torch.cat([real,stylized],dim=1)
+    
+        show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
         
         
         #show_batch(make_grid(style, nrow=1, padding=5, normalize=True))

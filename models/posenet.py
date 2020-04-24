@@ -142,7 +142,7 @@ class TriNet(nn.Module):
       x = x.view(-1, *s[1:])
       poses = self.trinet(x)
     if len(s) == 5:
-      self.feats = self.feats.view(s[0],3,self.feats.shape[-3],self.feats.shape[-2],self.feats.shape[-1])
+      self.feats = self.feats.view(s[0],s[1],self.feats.shape[-3],self.feats.shape[-2],self.feats.shape[-1])
     else:
       self.feats = None
     return (poses,self.feats)
@@ -168,7 +168,7 @@ if __name__ == '__main__':
   img = load_image(os.path.join(data_path,img_dir))
   img = transform(img)
 
-  img = torch.ones(10,3,256,256)
+  img = torch.ones(10,4,3,256,256)
   pose,feats = model(img)
   print(pose.shape)
   print(feats.shape)

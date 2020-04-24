@@ -129,7 +129,7 @@ class Trainer(object):
     self.config['cuda'] = torch.cuda.is_available()
     self.config['max_grad_norm'] = section.getfloat('max_grad_norm', 0)
     self.config['patience'] = section.getint('patience')
-
+    self.config['min_perceptual'] = section.getboolean('min_perceptual',False)
     section = settings['logging']
     self.config['log_visdom'] = section.getboolean('visdom')
     self.config['print_freq'] = section.getint('print_freq')
@@ -152,8 +152,8 @@ class Trainer(object):
 
       self.training_loss_win = 'training_loss_win'
       self.vis = Visdom(server=visdom_server, port=visdom_port)
-      self.vis.line(X=np.zeros((1,3)), Y=np.zeros((1,3)), win=self.training_loss_win,
-        opts={'legend': ['pose_loss','triplet_loss','total_loss'], 'xlabel': 'epochs',
+      self.vis.line(X=np.zeros((1,4)), Y=np.zeros((1,4)), win=self.training_loss_win,
+        opts={'legend': ['pose_loss','triplet_loss','perceptual_loss','total_loss'], 'xlabel': 'epochs',
               'ylabel': 'loss'}, env=self.vis_env)
       
       self.val_loss_win = 'val_loss_win'
@@ -499,6 +499,7 @@ class Trainer(object):
             real = data[0].reshape(to_shape)
             style_stats = data[1].reshape(-1,2,512)
             style_indc = data[2].view(-1)
+            stylized = None
             if sum(style_indc == 1) > 0:
                 with torch.no_grad():
                     if self.alpha < 0:
@@ -508,17 +509,23 @@ class Trainer(object):
                 
                     feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
                     feat = feat * self.alpha + content_f * (1 - self.alpha)
-                    stylized = decoder(feat)
+                    stylized = decoder(feat).cpu()[...,:real.shape[-2],:real.shape[-1]]
                     # the output from the decoder gets padded, so only keep the portion that has
                     # the same size as the original
-                    real[style_indc == 1] = stylized.cpu()[...,:real.shape[-2],:real.shape[-1]]
-    
-            #from common.vis_utils import show_batch, show_stereo_batch
-            #from torchvision.utils import make_grid
-            #show_batch(make_grid(real, nrow=6, padding=5, normalize=True))
-            #sys.exit(-1)
+                    if not self.config['min_perceptual']:
+                      real[style_indc == 1] = stylized
+                    
 
             real = real.reshape(data_shape)
+            if self.config['min_perceptual']:
+              stylized = stylized[:,None,...]
+              real = torch.cat([real,stylized],dim=1)
+
+            #from common.vis_utils import show_batch, show_stereo_batch
+            #from torchvision.utils import make_grid
+            #show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
+            #sys.exit(-1)
+
             kwargs = dict(target=target, criterion=self.train_criterion,
               optim=self.optimizer, train=True,
               max_grad_norm=self.config['max_grad_norm'])
@@ -538,13 +545,14 @@ class Trainer(object):
                     'Data Time {:.4f} ({:.4f})\t' \
                     'Step Time {:.4f} ({:.4f})\t' \
                     'Triplet Loss {:f}\t' \
+                    'Perceptual Loss {:f}\t' \
                     'Pose Loss {:f}\t' \
                     'total Loss {:f}\t' \
                     'lr: {:f}'.\
                 format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
                 train_data_time.val, train_data_time.avg, train_batch_time.val,
                 train_batch_time.avg, 
-                loss.triplet_loss.item(),(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item(),
+                loss.triplet_loss.item(),loss.triplet_loss.item(),(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item(),
                 loss.final_loss.item(), lr))
 
               if self.config['log_visdom']:
@@ -553,6 +561,9 @@ class Trainer(object):
                   update='append', env=self.vis_env)
                 self.vis.line(X=np.asarray([epoch_count]),
                   Y=np.asarray([loss.triplet_loss.item()]), win=self.training_loss_win, name='triplet_loss',
+                  update='append', env=self.vis_env)
+                self.vis.line(X=np.asarray([epoch_count]),
+                  Y=np.asarray([loss.perceptual_loss.item()]), win=self.training_loss_win, name='perceptual_loss',
                   update='append', env=self.vis_env)
                 self.vis.line(X=np.asarray([epoch_count]),
                   Y=np.asarray([(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item()]), win=self.training_loss_win, name='pose_loss',
