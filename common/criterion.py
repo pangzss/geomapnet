@@ -251,7 +251,7 @@ class TripletCriterion(nn.Module):
       style_feats_sq = torch.sum(style_feats**2,dim=-1)
       product = torch.sum(real_feats*style_feats,dim=-1)
 
-      perceptual_loss = torch.sum((real_feats_sq - 2*product + style_feats_sq),dim=1)/(C*H*W)
+      perceptual_loss = torch.sum((real_feats_sq - 2*product + style_feats_sq),dim=1)
       perceptual_loss = torch.mean(perceptual_loss)
 
     # absolute pose loss

@@ -68,7 +68,7 @@ dropout = section.getfloat('dropout')
 color_jitter = section.getfloat('color_jitter', 0)
 
 sc = section.getfloat('sigma_cx', 0.0)
-#sp = section.getfloat('sigma_pose',0.0)
+sp = section.getfloat('sigma_pc',0.0)
 
 sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
@@ -85,6 +85,7 @@ if args.model.find('++') >= 0:
   print('Using {:s} VO'.format(vo_lib))
 
 section = settings['training']
+min_perceptual = section.getboolean('min_perceptual',False)
 #seed = section.getint('seed')
 seed = args.init_seed
 if seed >= 0:
@@ -124,7 +125,7 @@ elif args.model.find('mapnet') >= 0:
     train_criterion = MapNetCriterion(**kwargs)
     val_criterion = MapNetCriterion()
 elif args.model == 'trinet':
-  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, learn_beta=args.learn_beta,
+  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, sp=sp,learn_beta=args.learn_beta,
                 learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
   train_criterion = TripletCriterion(**kwargs)
   val_criterion = TripletCriterion()
@@ -141,6 +142,8 @@ if args.learn_gamma and hasattr(train_criterion, 'srx') and \
   param_list.append({'params': [train_criterion.srx, train_criterion.srq]})
 if args.learn_sigma and hasattr(train_criterion, 'sc'):
   param_list.append({'params': [train_criterion.sc]})
+if args.learn_sigma and hasattr(train_criterion, 'sp'):
+  param_list.append({'params': [train_criterion.sp]})
 optimizer = Optimizer(params=param_list, method=opt_method, base_lr=lr,
   weight_decay=weight_decay, **optim_config)
 
@@ -227,7 +230,7 @@ elif args.model == 'trinet':
     val_set = AachenTriplet(train=False, **val_kwargs)
   elif args.dataset == 'Cambridge':
     from dataset_loaders.cambridge_triplet import CambridgeTriplet
-    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir,min_perceptual=min_perceptual)
     train_set = CambridgeTriplet(train=True, **kwargs)
     val_set = CambridgeTriplet(train=False, **val_kwargs)
 else:
