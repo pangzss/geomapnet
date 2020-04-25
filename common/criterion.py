@@ -229,6 +229,11 @@ class TripletCriterion(nn.Module):
     feats = output[1]
     s = pred.size()
     if s[1] == 4:
+      pred_style = pred[:,3].clone()
+      targ_style = targ[:,1].clone()
+      pred_tuple = torch.stack([pred[:,1],pred[:,3]],dim=1)
+      targ_tuple = torch.stack([targ[:,1],targ[:,1]],dim=1)
+
       pred = pred[:,:3].clone()
     # contextual triplet loss
     triplet_loss = torch.tensor(0.0)
@@ -255,11 +260,16 @@ class TripletCriterion(nn.Module):
       perceptual_loss = torch.mean(perceptual_loss)
 
     # absolute pose loss
-    s = pred.size()
     t_loss = torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, s[-1])[:, :3],targ.view(-1, s[-1])[:, :3]) + self.sax
     q_loss = torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, s[-1])[:, 3:],targ.view(-1, s[-1])[:, 3:]) + self.saq
+    
+    t_loss_style  = torch.tensor(0.0)
+    q_loss_style = torch.tensor(0.0)
+    if feats is not None and s[1] == 4:
+      t_loss_style = torch.exp(-self.sax) * self.t_loss_fn(pred_style.view(-1, s[-1])[:, :3],targ_style.view(-1, s[-1])[:, :3]) + self.sax
+      q_loss_style = torch.exp(-self.saq) * self.q_loss_fn(pred_style.view(-1, s[-1])[:, 3:],targ_style.view(-1, s[-1])[:, 3:]) + self.saq
 
-    abs_loss = t_loss + q_loss
+    abs_loss = t_loss + q_loss + t_loss_style + q_loss_style
 
     # vo loss 
     # get the VOs
@@ -267,6 +277,9 @@ class TripletCriterion(nn.Module):
     if feats is not None:
       pred_vos = pose_utils.calc_vos_simple(pred)
       targ_vos = pose_utils.calc_vos_simple(targ)
+
+      pred_vos_tuple = pose_utils.calc_vos_simple(pred_tuple)
+      targ_vos_tuple = pose_utils.calc_vos_simple(targ_tuple)
 
       s = pred_vos.size()
       vo_loss = \
@@ -277,6 +290,15 @@ class TripletCriterion(nn.Module):
                                               targ_vos.view(-1, *s[2:])[:, 3:]) + \
         self.srq
 
+      vo_loss_tuple = \
+        torch.exp(-self.srx) * self.t_loss_fn(pred_vos_tuple.view(-1, *s[2:])[:, :3],
+                                              targ_vos_tuple.view(-1, *s[2:])[:, :3]) + \
+        self.srx + \
+        torch.exp(-self.srq) * self.q_loss_fn(pred_vos_tuple.view(-1, *s[2:])[:, 3:],
+                                              targ_vos_tuple.view(-1, *s[2:])[:, 3:]) + \
+        self.srq
+      
+      vo_loss = vo_loss + vo_loss_tuple
     # total pose loss
 
     pose_loss = abs_loss + vo_loss 
