@@ -11,7 +11,7 @@ from common.train import Trainer
 from common.optimizer import Optimizer
 from common.criterion import PoseNetCriterion, MapNetCriterion,\
   MapNetOnlineCriterion, TripletCriterion
-from models.posenet import PoseNet, MapNet, TriNet
+from models.posenet import PoseNet, MapNet, TriNet, StripNet
 from dataset_loaders.composite import MF, MFOnline
 import os.path as osp
 import numpy as np
@@ -33,7 +33,7 @@ parser.add_argument('--alpha', type=float, help='intensity of stylization')
 #parser.add_argument('--num_styles', type=int, help='number of styles')
 parser.add_argument('--t_aug', action='store_true', help='use traditional augmentation')
 parser.add_argument('--config_file', type=str, help='configuration file')
-parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet'),
+parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet','stripnet'),
   help='Model to train')
 parser.add_argument('--device', type=str, default='0',
   help='value to be set to $CUDA_VISIBLE_DEVICES')
@@ -73,7 +73,7 @@ sp = section.getfloat('sigma_pc',0.0)
 sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
 train_split = section.getint('train_split', 6)
-if args.model.find('mapnet') >= 0 or args.model=='trinet':
+if args.model.find('mapnet') >= 0 or args.model=='trinet' or args.model == 'stripnet':
   skip = section.getint('skip')
   real = section.getboolean('real')
   variable_skip = section.getboolean('variable_skip')
@@ -105,6 +105,8 @@ elif args.model.find('mapnet') >= 0:
   model = MapNet(mapnet=posenet)
 elif args.model == 'trinet':
   model = TriNet(trinet=posenet)
+elif args.model == 'stripnet':
+  model = StripNet(stripnet=posenet)
 else:
   raise NotImplementedError
 
@@ -125,6 +127,11 @@ elif args.model.find('mapnet') >= 0:
     train_criterion = MapNetCriterion(**kwargs)
     val_criterion = MapNetCriterion()
 elif args.model == 'trinet':
+  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, sp=sp,learn_beta=args.learn_beta,
+                learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
+  train_criterion = TripletCriterion(**kwargs)
+  val_criterion = TripletCriterion()
+elif args.model == 'stripnet':
   kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, sp=sp,learn_beta=args.learn_beta,
                 learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
   train_criterion = TripletCriterion(**kwargs)
@@ -233,6 +240,12 @@ elif args.model == 'trinet':
     kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir,min_perceptual=min_perceptual)
     train_set = CambridgeTriplet(train=True, **kwargs)
     val_set = CambridgeTriplet(train=False, **val_kwargs)
+elif args.model == 'stripnet': 
+  if args.dataset == 'Cambridge':
+    from dataset_loaders.cambridge_stripnet import CambridgeStripnet
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    train_set = CambridgeStripnet(train=True, **kwargs)
+    val_set = CambridgeStripnet(train=False, **val_kwargs)
 else:
   raise NotImplementedError
 

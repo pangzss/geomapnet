@@ -147,13 +147,125 @@ class TriNet(nn.Module):
       self.feats = None
     return (poses,self.feats)
 
+
+class StripNet(nn.Module):
+  """
+  Implements the MapNet model (green block in Fig. 2 of paper)
+  """
+  def __init__(self, stripnet):
+    """
+    :param mapnet: the MapNet (two CNN blocks inside the green block in Fig. 2
+    of paper). Not to be confused with MapNet, the model!
+    """
+    super(StripNet, self).__init__()
+    self.stripnet = stripnet
+    self.feats = None
+    self.selected_layer = [(1,0),(2,0),(3,0),(3,4),(4,2)]
+    for lb in self.selected_layer:
+      self.hook_layer_forward(lb[0],lb[1])
+
+  def calc_mean_std(self,feat, eps=1e-5):
+      # eps is a small value added to the variance to avoid divide-by-zero.
+      size = feat.size()
+      assert (len(size) == 4)
+      N, C = size[:2]
+      feat_var = feat.view(N, C, -1).var(dim=2) + eps
+      feat_std = feat_var.sqrt().view(N, C, 1, 1)
+      feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
+      return feat_mean, feat_std
+  def conditional_instance_norm(self,feats_content,feats_style):
+      size = feats_content.size()
+
+      style_mean,style_std = self.calc_mean_std(feats_style)
+      content_mean,content_std = self.calc_mean_std(feats_content)
+      normalized_feat = (feats_content - content_mean.expand(
+      size)) / content_std.expand(size)
+      stylized = normalized_feat * style_std.expand(size) + style_mean.expand(size)
+      return stylized 
+  def hook_layer_forward(self,layer,block):
+        def hook_function(module, input, output):
+            if output.shape[0] != 1:
+              if layer == 1 and block == 0:
+                s = output.size()
+                output = output.reshape(-1,4,s[-3],s[-2],s[-1])
+                feats_triplet = output[:,:3].clone()
+                feats_content = output[:,1].clone()
+                feats_style = output[:,3].clone()
+              
+                stylized = self.conditional_instance_norm(feats_content,feats_style)
+
+                output = torch.cat([feats_triplet,feats_style[:,None,...],stylized[:,None,...]],dim=1)
+                s = output.size()
+                output = output.view(-1,*s[2:])
+                
+              elif layer == 3 and block == 4:
+                s = output.size()
+                output = output.reshape(-1,5,s[-3],s[-2],s[-1])
+                feats_triplet = output[:,:3].clone()
+                feats_content = output[:,-1].clone()
+                feats_style = output[:,3].clone()
+
+                stylized = self.conditional_instance_norm(feats_content,feats_style)
+
+                output = torch.cat([feats_triplet,stylized[:,None,...]],dim=1)
+                s = output.size()
+                output = output.view(-1,*s[2:])
+                
+              elif layer == 4 and block == 2:
+                self.feats = output
+  
+              else:
+                s = output.size()
+                
+                output = output.reshape(-1,5,s[-3],s[-2],s[-1])
+                feats_triplet = output[:,:3].clone()
+                feats_content = output[:,-1].clone()
+                feats_style = output[:,3].clone()
+
+                stylized = self.conditional_instance_norm(feats_content,feats_style)
+
+                output = torch.cat([feats_triplet,feats_style[:,None,...],stylized[:,None,...]],dim=1)
+                s = output.size()
+          
+                output = output.view(-1,*s[2:])
+
+    
+              return output
+             
+            
+            else:
+              pass
+
+        # Hook the selected layer
+        self.stripnet._modules['feature_extractor']._modules['layer'+str(layer)][block].register_forward_hook(hook_function)
+
+  def forward(self, x):
+    """
+    :param x: image blob (N x T x C x H x W)
+    :return: pose outputs
+     (N x T x 6)
+    """
+   
+    s = x.size()
+    if len(s) == 5:
+      x = x.view(-1, *s[2:])
+      poses = self.stripnet(x)
+      poses = poses.view(s[0], s[1], -1)
+    else:
+      x = x.view(-1, *s[1:])
+      poses = self.stripnet(x)
+    if len(s) == 5:
+      self.feats = self.feats.view(s[0],s[1],self.feats.shape[-3],self.feats.shape[-2],self.feats.shape[-1])
+    else:
+      self.feats = None
+    return (poses,self.feats)
 if __name__ == '__main__':
   from torchvision import models
   from torchvision import transforms
   from dataset_loaders.utils import load_image
   feature_extractor = models.resnet34(pretrained=True)
   posenet = PoseNet(feature_extractor, droprate=0, pretrained=True)
-  model = TriNet(posenet)
+  model = StripNet(posenet)
 
   num_workers = 0
   transform = transforms.Compose([

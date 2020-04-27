@@ -497,23 +497,24 @@ class Trainer(object):
             data_shape = data[0].shape
             to_shape = (-1,data_shape[-3],data_shape[-2],data_shape[-1])
             real = data[0].reshape(to_shape)
-            style_stats = data[1].reshape(-1,2,512)
-            style_indc = data[2].view(-1)
-            stylized = None
-            if sum(style_indc == 1) > 0:
-                with torch.no_grad():
-                    if self.alpha < 0:
-                      self.alpha = np.random.rand(1).item()
-                    content_f = vgg(real[style_indc == 1].cuda())
-                    style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
-                
-                    feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
-                    feat = feat * self.alpha + content_f * (1 - self.alpha)
-                    stylized = decoder(feat).cpu()[...,:real.shape[-2],:real.shape[-1]]
-                    # the output from the decoder gets padded, so only keep the portion that has
-                    # the same size as the original
-                    if not self.config['min_perceptual']:
-                      real[style_indc == 1] = stylized
+            if len(data[1].size()) == 4:
+              style_stats = data[1].reshape(-1,2,512)
+              style_indc = data[2].view(-1)
+              stylized = None
+              if sum(style_indc == 1) > 0:
+                  with torch.no_grad():
+                      if self.alpha < 0:
+                        self.alpha = np.random.rand(1).item()
+                      content_f = vgg(real[style_indc == 1].cuda())
+                      style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
+                  
+                      feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
+                      feat = feat * self.alpha + content_f * (1 - self.alpha)
+                      stylized = decoder(feat).cpu()[...,:real.shape[-2],:real.shape[-1]]
+                      # the output from the decoder gets padded, so only keep the portion that has
+                      # the same size as the original
+                      if not self.config['min_perceptual']:
+                        real[style_indc == 1] = stylized
                     
 
             real = real.reshape(data_shape)
