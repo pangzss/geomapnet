@@ -238,7 +238,10 @@ class StripNet(nn.Module):
               pass
 
         # Hook the selected layer
-        self.stripnet._modules['feature_extractor']._modules['layer'+str(layer)][block].register_forward_hook(hook_function)
+        if layer == 4 and block == 2:
+          self.stripnet._modules['feature_extractor']._modules['layer'+str(layer)][block]._modules['conv2'].register_forward_hook(hook_function)
+        else:
+          self.stripnet._modules['feature_extractor']._modules['layer'+str(layer)][block].register_forward_hook(hook_function)
 
   def forward(self, x):
     """
