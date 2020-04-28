@@ -206,8 +206,9 @@ class TripletCriterion(nn.Module):
     :param learn_gamma: learn srx and srq?
     """
     super(TripletCriterion, self).__init__()
-    from contextual_loss.CX_distance import CX_sim
+    from contextual_loss.CX_distance import CX_sim,CX_sim_NNDR
     self.CS = CX_sim
+    self.CS_NNDR = CX_sim_NNDR
     self.margin = 0.5
     self.sc = nn.Parameter(torch.Tensor([sc]), requires_grad=learn_sigma)
     self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
@@ -238,8 +239,8 @@ class TripletCriterion(nn.Module):
     # contextual triplet loss
     triplet_loss = torch.tensor(0.0)
     if feats is not None:
-      sim_ap = self.CS(feats[:,1],feats[:,0])
-      sim_an = self.CS(feats[:,1],feats[:,2])
+      sim_ap = self.CS_NNDR(feats[:,1],feats[:,0])
+      sim_an = self.CS_NNDR(feats[:,1],feats[:,2])
       triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
     # perceptual loss
     perceptual_loss = torch.tensor(0.0)
