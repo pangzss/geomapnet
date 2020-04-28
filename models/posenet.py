@@ -181,6 +181,7 @@ class StripNet(nn.Module):
       normalized_feat = (feats_content - content_mean.expand(
       size)) / content_std.expand(size)
       stylized = normalized_feat * style_std.expand(size) + style_mean.expand(size)
+      stylized = 0.5*feats_content + 0.5*stylized
       return stylized 
   def hook_layer_forward(self,layer,block):
         def hook_function(module, input, output):
