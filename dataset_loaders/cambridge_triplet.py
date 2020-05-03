@@ -62,13 +62,14 @@ class CambridgeTriplet(data_.Dataset):
         self.target_transform = target_transform
         
         #
-        self.real_prob = real_prob if self.train else 100
-        self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) if self.train else None
-        self.mean = torch.tensor(self.style_dist[0],dtype=torch.float) if self.train else None
-        self.cov = torch.tensor(self.style_dist[1:],dtype=torch.float) if self.train else None 
-        u, s, vh = np.linalg.svd(self.cov)
-        self.A = np.matmul(u,np.diag(s**0.5))
-        self.A = torch.tensor(self.A).float()
+        if self.train:
+            self.real_prob = real_prob
+            self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) 
+            self.mean = torch.tensor(self.style_dist[0],dtype=torch.float)
+            self.cov = torch.tensor(self.style_dist[1:],dtype=torch.float)
+            u, s, vh = np.linalg.svd(self.cov)
+            self.A = np.matmul(u,np.diag(s**0.5))
+            self.A = torch.tensor(self.A).float()
         #
         
         self.min_perceptual = min_perceptual
@@ -221,21 +222,21 @@ class CambridgeTriplet(data_.Dataset):
             if not self.min_perceptual:
                 style_idx = torch.zeros(3)
                 draw = np.random.randint(low=1,high=101,size=1)
-                if draw > self.real_prob and self.train:
+                if draw > self.real_prob:
                     anchor_style = self.get_style(anchor.shape)
                     style_idx[1] = 1
                 else:
                     anchor_style = torch.zeros(2,512)
                 
                 draw = np.random.randint(low=1,high=101,size=1)
-                if draw > self.real_prob and self.train:
+                if draw > self.real_prob:
                     pos_style = self.get_style(pos.shape)
                     style_idx[0] = 1
                 else:
                     pos_style = torch.zeros(2,512)
 
                 draw = np.random.randint(low=1,high=101,size=1)
-                if draw > self.real_prob and self.train:
+                if draw > self.real_prob:
                     neg_style = self.get_style(neg.shape)
                     style_idx[2] = 1
                 else:
