@@ -64,8 +64,11 @@ class CambridgeTriplet(data_.Dataset):
         #
         self.real_prob = real_prob if self.train else 100
         self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) if self.train else None
-        self.mean = self.style_dist[0] if self.train else None
-        self.cov = self.style_dist[1:] if self.train else None 
+        self.mean = torch.tensor(self.style_dist[0],dtype=torch.float) if self.train else None
+        self.cov = torch.tensor(self.style_dist[1:],dtype=torch.float) if self.train else None 
+        u, s, vh = np.linalg.svd(self.cov)
+        self.A = np.matmul(u,np.diag(s**0.5))
+        self.A = torch.tensor(self.A).float()
         #
         
         self.min_perceptual = min_perceptual
@@ -182,8 +185,10 @@ class CambridgeTriplet(data_.Dataset):
             print('loaded {} triplets for {} data points'.format(len(self.triplets),len(self.points)))
 
     def get_style(self,img_shape):
-        embedding = np.random.multivariate_normal(self.mean, self.cov,1)
-        style_stats = torch.tensor(embedding.reshape((2,512)),dtype=torch.float)
+        embedding = torch.randn(1,1024)
+        embedding = torch.mm(embedding,self.A.transpose(1,0)) + self.mean
+        #embedding = np.random.multivariate_normal(self.mean, self.cov,1)
+        style_stats = embedding.reshape((2,512))
 
         return style_stats
 
@@ -301,10 +306,10 @@ def main():
     train = True
     min_perceptual = True
     dset = CambridgeTriplet(data_path, train,scene=scene,transform=transform, target_transform=target_transform,
-    real_prob=100,style_dir='../data/style_portraits',min_perceptual=min_perceptual)
+    real_prob=100,style_dir='../data/pbn_train_embedding_dist.txt',min_perceptual=min_perceptual)
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data_.DataLoader(dset, batch_size=10, shuffle=True,
+    data_loader = data_.DataLoader(dset, batch_size=3, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
     N_batches = 5
@@ -318,7 +323,7 @@ def main():
    
         if sum(style_indc == 1) > 0:
             with torch.no_grad():
-                alpha = 1.0
+                alpha = 0.5
                 assert (0.0 <= alpha <= 1.0)
                 content_f = vgg(real[style_indc == 1].cuda())
                 style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
