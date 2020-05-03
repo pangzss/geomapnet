@@ -43,13 +43,17 @@ class Cambridge(data.Dataset):
         self.train = train
         self.transform = transform
         self.target_transform = target_transform
-        
+        print(style_dir)
         #
         self.real_prob = real_prob if self.train else 100
-        self.style_dir = style_dir+'_stats_'+scene if self.train else None
-        self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
-        print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
-                                                                                                if self.style_dir is not None else 0))
+        self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) if self.train else None
+        self.mean = self.style_dist[0] if self.train else None
+        self.cov = self.style_dist[1:] if self.train else None 
+        
+        #self.style_dir = style_dir+'_stats_'+scene if self.train else None
+        #self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
+        #print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
+        #                                                                                        if self.style_dir is not None else 0))
         #
         
         if self.train:
@@ -103,14 +107,16 @@ class Cambridge(data.Dataset):
         
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
-            num_styles = len(self.available_styles)
+            #num_styles = len(self.available_styles)
             style_stats = np.empty(0)
             while len(style_stats) == 0:
-                style_idx = np.random.choice(num_styles,1)
-                style_stats_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
-                style_stats = np.loadtxt(style_stats_path)
+                #style_idx = np.random.choice(num_styles,1)
+                #style_stats_path = os.path.join(self.style_dir,self.available_styles[style_idx[0]])
+                #style_stats = np.loadtxt(style_stats_path)
                 
-                style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
+                #style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
+                embedding = np.random.multivariate_normal(self.mean, self.cov,1)
+                style_stats = torch.tensor(embedding.reshape((2,512)),dtype=torch.float)
             '''
             ## stylization
             t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \
@@ -178,7 +184,7 @@ def main():
     data_path = '../data/deepslam_data/Cambridge'
     scene = 'ShopFacade'
     train = True
-    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=0,style_dir='../data/style_pbn')
+    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=50,style_dir='pbn_embedding_dist.txt')
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,
@@ -193,7 +199,7 @@ def main():
         
         if sum(style_indc == 1) > 0:
             with torch.no_grad():
-                alpha = 1.0
+                alpha = 0.5
                 assert (0.0 <= alpha <= 1.0)
                 content_f = vgg(real[style_indc == 1].cuda())
                 style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()

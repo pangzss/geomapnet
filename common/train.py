@@ -522,10 +522,10 @@ class Trainer(object):
               stylized = stylized[:,None,...]
               real = torch.cat([real,stylized],dim=1)
 
-            #from common.vis_utils import show_batch, show_stereo_batch
-            #from torchvision.utils import make_grid
-            #show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
-            #sys.exit(-1)
+            from common.vis_utils import show_batch, show_stereo_batch
+            from torchvision.utils import make_grid
+            show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
+            sys.exit(-1)
 
             kwargs = dict(target=target, criterion=self.train_criterion,
               optim=self.optimizer, train=True,
