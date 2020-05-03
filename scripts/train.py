@@ -89,7 +89,7 @@ min_perceptual = section.getboolean('min_perceptual',False)
 #seed = section.getint('seed')
 seed = args.init_seed
 if seed >= 0:
-  #random.seed(seed)
+  random.seed(seed)
   torch.manual_seed(seed)
   np.random.seed(seed)
   torch.backends.cudnn.deterministic = True

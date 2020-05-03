@@ -206,9 +206,10 @@ class TripletCriterion(nn.Module):
     :param learn_gamma: learn srx and srq?
     """
     super(TripletCriterion, self).__init__()
-    from contextual_loss.CX_distance import CX_sim,CX_sim_NNDR
+    from contextual_loss.CX_distance import CX_sim,CX_sim_NNDR,CX_sim_dii
     self.CS = CX_sim
     self.CS_NNDR = CX_sim_NNDR
+    self.CS_dii = CX_sim_dii
     self.margin = 0.5
     self.sc = nn.Parameter(torch.Tensor([sc]), requires_grad=learn_sigma)
     self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
@@ -239,8 +240,8 @@ class TripletCriterion(nn.Module):
     # contextual triplet loss
     triplet_loss = torch.tensor(0.0)
     if feats is not None:
-      sim_ap = self.CS_NNDR(feats[:,1],feats[:,0])
-      sim_an = self.CS_NNDR(feats[:,1],feats[:,2])
+      sim_ap = self.CS(feats[:,1],feats[:,0])
+      sim_an = self.CS(feats[:,1],feats[:,2])
       triplet_loss = torch.mean(F.relu(sim_an-sim_ap+self.margin))
     # perceptual loss
     perceptual_loss = torch.tensor(0.0)
@@ -248,8 +249,8 @@ class TripletCriterion(nn.Module):
       real_feats = feats[:,1]
       style_feats = feats[:,3]
 
-      sim_rs =  self.CS(real_feats,style_feats)
-      perceptual_loss = torch.mean(-torch.log(sim_rs + 1e-5))
+      pc_loss =  self.CS_dii(real_feats,style_feats)
+      perceptual_loss = torch.mean(pc_loss)
       '''
       N,C,H,W = real_feats.shape
 
