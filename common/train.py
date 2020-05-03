@@ -389,9 +389,11 @@ class Trainer(object):
       val_ori_list = []
       early_stop_counter = 0
       saved_list = []
+      last_saved_pos = None
+      last_saved_ori = None
       for epoch in range(self.start_epoch, self.config['n_epochs']+1):
         # VALIDATION
-        if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
+        if self.config['do_val'] and epoch >= 250 and ((epoch % self.config['val_freq'] == 0) or
                                         (epoch == self.config['n_epochs']-1) or 
                                         (epoch == self.config['n_epochs']) ):
                       
@@ -449,13 +451,23 @@ class Trainer(object):
             relative_pos_change = -(curr_pos - past_best_pos)/past_best_pos
             relative_ori_change = -(curr_ori - past_best_ori)/past_best_ori
 
+            if  last_saved_pos is not None:
+              last_pos_change = -(curr_pos - last_saved_pos)/last_saved_pos
+              last_ori_change = -(curr_ori - last_saved_ori)/last_saved_ori
             #if (curr_pos < past_best_pos) and (curr_ori < past_best_ori):
-            if relative_pos_change + relative_ori_change > 0:
-
+            if (relative_pos_change + relative_ori_change > 0) or \
+              (last_pos_change + last_ori_change) > 0:
+              if last_saved_pos is not None:
+                print(f'Validation loss decreased ({last_saved_pos:.6f} --> {curr_pos:.6f}) ({last_saved_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
+                self.save_checkpoint(epoch)
+              else:
+                print(f'Validation loss decreased ({past_best_pos:.6f} --> {curr_pos:.6f}) ({past_best_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
+                self.save_checkpoint(epoch)
+              last_saved_pos = curr_pos
+              last_saved_ori = curr_ori
               saved_list.append(epoch)
 
-              print(f'Validation loss decreased ({past_best_pos:.6f} --> {curr_pos:.6f}) ({past_best_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
-              self.save_checkpoint(epoch)
+              
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
               if len(saved_list)>1:
@@ -522,10 +534,10 @@ class Trainer(object):
               stylized = stylized[:,None,...]
               real = torch.cat([real,stylized],dim=1)
 
-            from common.vis_utils import show_batch, show_stereo_batch
-            from torchvision.utils import make_grid
-            show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
-            sys.exit(-1)
+            #from common.vis_utils import show_batch, show_stereo_batch
+            #from torchvision.utils import make_grid
+            #show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
+            #sys.exit(-1)
 
             kwargs = dict(target=target, criterion=self.train_criterion,
               optim=self.optimizer, train=True,
