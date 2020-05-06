@@ -109,13 +109,13 @@ class TriNet(nn.Module):
   """
   Implements the MapNet model (green block in Fig. 2 of paper)
   """
-  def __init__(self, trinet,layer=4,block=2):
+  def __init__(self, mapnet,layer=4,block=2):
     """
     :param mapnet: the MapNet (two CNN blocks inside the green block in Fig. 2
     of paper). Not to be confused with MapNet, the model!
     """
     super(TriNet, self).__init__()
-    self.trinet = trinet
+    self.mapnet = mapnet
     self.feats = None
     self.selected_layer = layer
     self.selected_block = block
@@ -124,7 +124,7 @@ class TriNet(nn.Module):
         def hook_function(module, input, output):
             self.feats = output
         # Hook the selected layer
-        self.trinet._modules['feature_extractor']._modules['layer'+str(self.selected_layer)][self.selected_block]._modules['conv2'].register_forward_hook(hook_function)
+        self.mapnet._modules['feature_extractor']._modules['layer'+str(self.selected_layer)][self.selected_block]._modules['conv2'].register_forward_hook(hook_function)
 
   def forward(self, x):
     """
@@ -136,11 +136,11 @@ class TriNet(nn.Module):
     s = x.size()
     if len(s) == 5:
       x = x.view(-1, *s[2:])
-      poses = self.trinet(x)
+      poses = self.mapnet(x)
       poses = poses.view(s[0], s[1], -1)
     else:
       x = x.view(-1, *s[1:])
-      poses = self.trinet(x)
+      poses = self.mapnet(x)
     if len(s) == 5:
       self.feats = self.feats.view(s[0],s[1],self.feats.shape[-3],self.feats.shape[-2],self.feats.shape[-1])
     else:

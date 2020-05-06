@@ -28,8 +28,8 @@ parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','Aache
                     help='Dataset')
 parser.add_argument('--scene', type=str, default = ' ', help='Scene name')
 parser.add_argument('--style_dir', type=str, help='the directory of style images')
-parser.add_argument('--real_prob', type=int, help='the prob of using real images')
-parser.add_argument('--alpha', type=float, help='intensity of stylization')
+parser.add_argument('--real_prob', type=int, default=100, help='the prob of using real images')
+parser.add_argument('--alpha', type=float,default=1.0, help='intensity of stylization')
 #parser.add_argument('--num_styles', type=int, help='number of styles')
 parser.add_argument('--t_aug', action='store_true', help='use traditional augmentation')
 parser.add_argument('--config_file', type=str, help='configuration file')
@@ -104,7 +104,7 @@ if args.model == 'posenet':
 elif args.model.find('mapnet') >= 0:
   model = MapNet(mapnet=posenet)
 elif args.model == 'trinet':
-  model = TriNet(trinet=posenet)
+  model = TriNet(mapnet=posenet)
 elif args.model == 'stripnet':
   model = StripNet(stripnet=posenet)
 else:
@@ -267,15 +267,14 @@ if args.learn_gamma:
 if args.learn_sigma:
   experiment_name = '{:s}_sigma'.format(experiment_name)
 
-if args.real_prob < 100:
-  experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha if args.alpha>=0 else 'Rand')
+experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha if args.alpha>=0 else 'Rand')
 if args.t_aug:
   experiment_name = '{:s}_aug'.format(experiment_name)
 if seed >= 0:
   experiment_name = '{:s}_seed{}'.format(experiment_name, seed) 
 experiment_name += args.suffix
 trainer = Trainer(model, optimizer, train_criterion, args.config_file,
-                  experiment_name, train_set, val_set, seed=seed, alpha=args.alpha,device=args.device,
+                  experiment_name, train_set, val_set, dataset_name=args.dataset,seed=seed, alpha=args.alpha,device=args.device,
                   checkpoint_file=args.checkpoint,
                   resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
 lstm = args.model == 'vidloc'

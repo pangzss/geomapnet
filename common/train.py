@@ -63,6 +63,7 @@ def load_state_dict(model, state_dict):
   from collections import OrderedDict
   new_state_dict = OrderedDict()
   for k,v in list(state_dict.items()):
+  
     if state_prefix is None:
       k = model_prefix + k
     else:
@@ -82,7 +83,7 @@ def safe_collate(batch):
 
 class Trainer(object):
   def __init__(self, model, optimizer, train_criterion, config_file, experiment,
-      train_dataset, val_dataset, device, seed=0, checkpoint_file=None, alpha=1.0,
+      train_dataset, val_dataset, device, dataset_name=None, seed=0, checkpoint_file=None, alpha=1.0,
       resume_optim=False, val_criterion=None,visdom_server='http://localhost', visdom_port=8097):
     """
     General purpose training script
@@ -110,7 +111,7 @@ class Trainer(object):
     self.optimizer = optimizer
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
       os.environ['CUDA_VISIBLE_DEVICES'] = device
-
+    self.dataset_name = dataset_name
     # read the config
     settings = configparser.ConfigParser()
     with open(config_file, 'r') as f:
@@ -135,12 +136,12 @@ class Trainer(object):
     self.config['print_freq'] = section.getint('print_freq')
 
     
-    self.logdir = osp.join(os.getcwd(), 'logs', self.experiment)
+    self.logdir = osp.join(os.getcwd(), 'logs', self.dataset_name, self.experiment)
     i = 0
     while osp.isdir(self.logdir):
       i += 1
       temp = self.experiment + '_version_{}'.format(i)
-      self.logdir = osp.join(os.getcwd(), 'logs', temp)
+      self.logdir = osp.join(os.getcwd(), 'logs', self.dataset_name,temp)
     if i != 0:
       self.experiment = self.experiment + '_version_{}'.format(i)
     os.makedirs(self.logdir)
@@ -200,6 +201,7 @@ class Trainer(object):
       if osp.isfile(checkpoint_file):
         loc_func = None if self.config['cuda'] else lambda storage, loc: storage
         checkpoint = torch.load(checkpoint_file, map_location=loc_func)
+        
         load_state_dict(self.model, checkpoint['model_state_dict'])
         if resume_optim:
           
@@ -393,7 +395,7 @@ class Trainer(object):
       last_saved_ori = None
       for epoch in range(self.start_epoch, self.config['n_epochs']+1):
         # VALIDATION
-        if self.config['do_val'] and epoch >= 250 and ((epoch % self.config['val_freq'] == 0) or
+        if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
                                         (epoch == self.config['n_epochs']-1) or 
                                         (epoch == self.config['n_epochs']) ):
                       
@@ -445,24 +447,25 @@ class Trainer(object):
           if self.config['val_freq'] == self.config['snapshot']:
             curr_pos = val_pos_list[-1]
             curr_ori = val_ori_list[-1]
-            past_best_pos = min(val_pos_list[:-1])
-            past_best_ori = min(val_ori_list[:-1])
+            #past_best_pos = min(val_pos_list[:-1])
+            #past_best_ori = min(val_ori_list[:-1])
 
-            relative_pos_change = -(curr_pos - past_best_pos)/past_best_pos
-            relative_ori_change = -(curr_ori - past_best_ori)/past_best_ori
+            #relative_pos_change = -(curr_pos - past_best_pos)/past_best_pos
+            #relative_ori_change = -(curr_ori - past_best_ori)/past_best_ori
 
-            if  last_saved_pos is not None:
-              last_pos_change = -(curr_pos - last_saved_pos)/last_saved_pos
-              last_ori_change = -(curr_ori - last_saved_ori)/last_saved_ori
+            if  last_saved_pos == None:
+              last_saved_pos = curr_pos
+              last_saved_ori = curr_ori
+            
+            last_pos_change = -(curr_pos - last_saved_pos)/last_saved_pos
+            last_ori_change = -(curr_ori - last_saved_ori)/last_saved_ori
             #if (curr_pos < past_best_pos) and (curr_ori < past_best_ori):
-            if (relative_pos_change + relative_ori_change > 0) or \
-              (last_pos_change + last_ori_change) > 0:
-              if last_saved_pos is not None:
-                print(f'Validation loss decreased ({last_saved_pos:.6f} --> {curr_pos:.6f}) ({last_saved_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
-                self.save_checkpoint(epoch)
-              else:
-                print(f'Validation loss decreased ({past_best_pos:.6f} --> {curr_pos:.6f}) ({past_best_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
-                self.save_checkpoint(epoch)
+           # if (relative_pos_change + relative_ori_change > 0) or \
+            if (last_pos_change + last_ori_change) > 0:
+              
+              print(f'Validation loss decreased ({last_saved_pos:.6f} --> {curr_pos:.6f}) ({last_saved_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
+              self.save_checkpoint(epoch)
+             
               last_saved_pos = curr_pos
               last_saved_ori = curr_ori
               saved_list.append(epoch)
@@ -471,7 +474,7 @@ class Trainer(object):
               print('Epoch {:d} checkpoint saved for {:s}'.\
                 format(epoch, self.experiment))
               if len(saved_list)>1:
-                os.remove(os.path.join('logs',self.experiment,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
+                os.remove(os.path.join(self.logdir,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
                 print('epoch_{}.pth.tar deleted.'.format(saved_list[0]))
                 del saved_list[0]
               #early stop
