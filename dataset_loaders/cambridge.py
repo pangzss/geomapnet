@@ -45,10 +45,14 @@ class Cambridge(data.Dataset):
         self.target_transform = target_transform
         print(style_dir)
         #
-        self.real_prob = real_prob if self.train else 100
-        self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) if self.train else None
-        self.mean = self.style_dist[0] if self.train else None
-        self.cov = self.style_dist[1:] if self.train else None 
+        self.real_prob = real_prob
+        if self.real_prob != 100:
+            self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) 
+            self.mean = torch.tensor(self.style_dist[0],dtype=torch.float32)
+            self.cov = self.style_dist[1:]
+            u, s, vh = np.linalg.svd(self.cov)
+            self.A = np.matmul(u,np.diag(s**0.5))
+            self.A = torch.tensor(self.A).float()
         
         #self.style_dir = style_dir+'_stats_'+scene if self.train else None
         #self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
@@ -115,8 +119,10 @@ class Cambridge(data.Dataset):
                 #style_stats = np.loadtxt(style_stats_path)
                 
                 #style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
-                embedding = np.random.multivariate_normal(self.mean, self.cov,1)
-                style_stats = torch.tensor(embedding.reshape((2,512)),dtype=torch.float)
+                embedding = torch.randn(1,1024)
+                embedding = torch.mm(embedding,self.A.transpose(1,0)) + self.mean
+                #embedding = np.random.multivariate_normal(self.mean, self.cov,1)
+                style_stats = embedding.view((2,512))
             '''
             ## stylization
             t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \
@@ -171,20 +177,21 @@ def main():
 
     num_workers = 0
     transform = transforms.Compose([
-    transforms.Resize((224,224)),
+    transforms.Resize(224),
+    transforms.CenterCrop(224),
     transforms.ToTensor(),
-
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
       std=[0.229, 0.224, 0.225])])
+
     inv_normalize = transforms.Normalize(
      mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
     std=[1/0.229, 1/0.224, 1/0.225]
      )
     
     data_path = '../data/deepslam_data/Cambridge'
-    scene = 'ShopFacade'
+    scene = 'OldHospital'
     train = True
-    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=50,style_dir='pbn_embedding_dist.txt')
+    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=0,style_dir='pbn_test_embedding_dist.txt')
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
     data_loader = data.DataLoader(dset, batch_size=10, shuffle=True,

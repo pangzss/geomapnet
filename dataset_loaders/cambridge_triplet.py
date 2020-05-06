@@ -62,15 +62,14 @@ class CambridgeTriplet(data_.Dataset):
         self.target_transform = target_transform
         
         #
-        if self.train:
-            self.real_prob = real_prob
+        self.real_prob = real_prob
+        if self.real_prob != 100:
             self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) 
             self.mean = torch.tensor(self.style_dist[0],dtype=torch.float)
             self.cov = torch.tensor(self.style_dist[1:],dtype=torch.float)
             u, s, vh = np.linalg.svd(self.cov)
             self.A = np.matmul(u,np.diag(s**0.5))
             self.A = torch.tensor(self.A).float()
-        #
         
         self.min_perceptual = min_perceptual
 
