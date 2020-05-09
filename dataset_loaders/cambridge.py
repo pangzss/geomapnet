@@ -35,7 +35,7 @@ class Cambridge(data.Dataset):
     
     def __init__(self, data_path, train, overfit=None, scene='ShopFacade',
                 seed=7, real=False,transform=None, target_transform=None,
-                style_dir = None,real_prob = 100):
+                style_dir = None,real_prob = 100,mask=False):
  
         np.random.seed(seed)
         self.data_path = data_path
@@ -43,7 +43,8 @@ class Cambridge(data.Dataset):
         self.train = train
         self.transform = transform
         self.target_transform = target_transform
-        print(style_dir)
+        self.mask = mask
+        print(self.mask)
         #
         self.real_prob = real_prob
         if self.real_prob != 100:
@@ -108,7 +109,14 @@ class Cambridge(data.Dataset):
         
         if self.target_transform is not None:
             pose = self.target_transform(pose) 
-        
+        if self.mask:
+            path = point.img_path.split('/')
+            
+            mask = load_image(os.path.join(self.data_path,self.scene,path[0]+'_masks','mask_'+path[1]))
+            
+            mask = torch.tensor(np.asarray(mask)[:,:,0],dtype=torch.bool)
+
+
         draw = np.random.randint(low=1,high=101,size=1)
         if draw > self.real_prob and self.train:
             #num_styles = len(self.available_styles)
@@ -143,14 +151,19 @@ class Cambridge(data.Dataset):
                     continue
                 style_t = t(style_t)
             '''
-            return (img_t,style_stats,torch.ones(1)),pose
+            if self.mask:
+                return (img_t,style_stats,torch.ones(1),mask),pose
+            else:
+                return (img_t,style_stats,torch.ones(1)),pose
         else:
             
             img_t = self.transform(img)
             style_stats = torch.zeros((2,512))
             
-            return (img_t,style_stats,torch.zeros(1)),pose
-
+            if self.mask:
+                return (img_t,style_stats,torch.zeros(1),mask),pose
+            else:
+                return (img_t,style_stats,torch.zeros(1)),pose
     
     def __len__(self):
         return len(self.points)
@@ -177,8 +190,8 @@ def main():
 
     num_workers = 0
     transform = transforms.Compose([
-    transforms.Resize(224),
-    transforms.CenterCrop(224),
+    transforms.Resize(256),
+    #transforms.CenterCrop(224),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
       std=[0.229, 0.224, 0.225])])
@@ -189,7 +202,7 @@ def main():
      )
     
     data_path = '../data/deepslam_data/Cambridge'
-    scene = 'OldHospital'
+    scene = 'ShopFacade'
     train = True
     dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=0,style_dir='pbn_test_embedding_dist.txt')
     print('Loaded Cambridge training data, length = {:d}'.format(
@@ -200,6 +213,7 @@ def main():
     N_batches = 10
     for batch in data_loader:
         real = batch[0][0]
+        print(real.shape)
         style_stats = batch[0][1]
         style_indc = batch[0][2].squeeze(1)
 

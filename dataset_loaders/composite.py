@@ -39,7 +39,7 @@ class MF(data.Dataset):
     self.train = kwargs['train']
     self.vo_func = kwargs.pop('vo_func', calc_vos_simple)
     self.no_duplicates = no_duplicates
-  
+    
     if dataset == '7Scenes':
       from .seven_scenes import SevenScenes
       self.dset = SevenScenes(*args, real=self.real, **kwargs)
@@ -92,11 +92,13 @@ class MF(data.Dataset):
     """
     idx = self.get_indices(index)
     clip  = [self.dset[i] for i in idx]
-
+    
     real_imgs  = torch.stack([c[0][0] for c in clip], dim=0)
     style_imgs =  torch.stack([c[0][1] for c in clip], dim=0)
     style_idces = torch.stack([c[0][2] for c in clip], dim=0)
-
+    if len(clip[0][0])==4:
+      
+      masks = torch.stack([c[0][3] for c in clip], dim=0)
     poses = torch.stack([c[1] for c in clip], dim=0)
     if self.include_vos:
       # vos = calc_vos_simple(poses.unsqueeze(0))[0] if self.train else \
@@ -106,9 +108,11 @@ class MF(data.Dataset):
         clip = [self.gt_dset[self.dset.gt_idx[i]] for i in idx]
         poses = torch.stack([c[1] for c in clip], dim=0)
       poses = torch.cat((poses, vos), dim=0)
-
-    return (real_imgs,style_imgs,style_idces), poses
-
+    
+    if len(clip[0][0])==4:
+      return (real_imgs,style_imgs,style_idces,masks), poses
+    else:
+      return (real_imgs,style_imgs,style_idces), poses
   def __len__(self):
     L = len(self.dset)
     if self.no_duplicates:
