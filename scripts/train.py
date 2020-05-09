@@ -30,6 +30,7 @@ parser.add_argument('--scene', type=str, default = ' ', help='Scene name')
 parser.add_argument('--style_dir', type=str, help='the directory of style images')
 parser.add_argument('--real_prob', type=int, default=100, help='the prob of using real images')
 parser.add_argument('--alpha', type=float,default=1.0, help='intensity of stylization')
+parser.add_argument('--mask', action='store_true')
 #parser.add_argument('--num_styles', type=int, help='number of styles')
 parser.add_argument('--t_aug', action='store_true', help='use traditional augmentation')
 parser.add_argument('--config_file', type=str, help='configuration file')
@@ -226,7 +227,7 @@ elif args.model.find('mapnet') >= 0:
     train_set = MFOnline(vo_lib=vo_lib, gps_mode=(vo_lib=='gps'), **kwargs)
     val_set = None
   else:
-    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir,mask=args.mask)
     train_set = MF(train=True, real=real, **kwargs)
     val_set = MF(train=False, real=real, **val_kwargs)
 elif args.model == 'trinet':
