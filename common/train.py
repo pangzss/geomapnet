@@ -527,23 +527,34 @@ class Trainer(object):
                       style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
                   
                       feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
-                      if len(data) == 4:
-                          mask = data[3]
-                          mask = mask.reshape(-1,mask.shape[-2],mask.shape[-1])
-                          mask = mask[style_indc == 1][:,None].numpy()
-                          resized_mask = img_as_bool(resize(mask, (mask.shape[0],1,feat.shape[-2], feat.shape[-1])))
-                          resized_mask = torch.tensor(resized_mask,dtype=torch.bool).cuda()
-                          feat_alpha = feat * self.alpha + content_f * (1 - self.alpha)
-                          feat_final = feat_alpha*(resized_mask==True) + feat*(resized_mask==False)
-                          stylized = decoder(feat_final).cpu()[...,:real.shape[-2],:real.shape[-1]]
-                      else:
-                        feat_alpha = feat * self.alpha + content_f * (1 - self.alpha)
-                        stylized = decoder(feat_alpha).cpu()[...,:real.shape[-2],:real.shape[-1]]
+                      #if len(data) == 4:
+                      #    mask = data[3]
+                      #    mask = mask.reshape(-1,mask.shape[-2],mask.shape[-1])
+                      #    mask = mask[style_indc == 1][:,None].numpy()
+                      #    resized_mask = img_as_bool(resize(mask, (mask.shape[0],1,feat.shape[-2], feat.shape[-1])))
+                      #    resized_mask = torch.tensor(resized_mask,dtype=torch.bool).cuda()
+                      #    feat_alpha = feat * self.alpha + content_f * (1 - self.alpha)
+                      #    feat_final = feat_alpha*(resized_mask==True) + feat*(resized_mask==False)
+                      #    stylized = decoder(feat_final).cpu()[...,:real.shape[-2],:real.shape[-1]]
+                      #else:
+                      feat_alpha = feat * self.alpha + content_f * (1 - self.alpha)
+                      stylized = decoder(feat_alpha).cpu()[...,:real.shape[-2],:real.shape[-1]]
                         
                       # the output from the decoder gets padded, so only keep the portion that has
                       # the same size as the original
                       if not self.config['min_perceptual']:
-                          real[style_indc == 1] = stylized
+                         if len(data) == 4:
+                            mask = data[3]
+                            mask = mask.reshape(-1,mask.shape[-2],mask.shape[-1])
+                            mask = mask[style_indc == 1][:,None].numpy()
+                            #resized_mask = img_as_bool(resize(mask, (mask.shape[0],1,feat.shape[-2], feat.shape[-1])))
+                            #resized_mask = torch.tensor(resized_mask,dtype=torch.bool).cuda()
+                            #feat_alpha = feat * self.alpha + content_f * (1 - self.alpha)
+                            #feat_final = feat_alpha*(resized_mask==True) + feat*(resized_mask==False)
+                            #stylized = decoder(feat_final).cpu()[...,:real.shape[-2],:real.shape[-1]]
+                            real[style_indc == 1] = stylized*(mask==False) + real[style_indc == 1]*(mask==True)
+                         else:
+                            real[style_indc == 1] = stylized
                     
 
             real = real.reshape(data_shape)
@@ -551,10 +562,10 @@ class Trainer(object):
               stylized = stylized[:,None,...]
               real = torch.cat([real,stylized],dim=1)
 
-            #from common.vis_utils import show_batch, show_stereo_batch
-            #from torchvision.utils import make_grid
-            #show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
-            #sys.exit(-1)
+            from common.vis_utils import show_batch, show_stereo_batch
+            from torchvision.utils import make_grid
+            show_batch(make_grid(real.reshape(to_shape), nrow=4, padding=5, normalize=True))
+            sys.exit(-1)
 
             kwargs = dict(target=target, criterion=self.train_criterion,
               optim=self.optimizer, train=True,
