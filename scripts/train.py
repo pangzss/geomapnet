@@ -233,7 +233,7 @@ elif args.model.find('mapnet') >= 0:
 elif args.model == 'trinet':
   if args.dataset == 'AachenDayNight':
     from dataset_loaders.aachen_triplet import AachenTriplet
-    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir,min_perceptual=min_perceptual)
     train_set = AachenTriplet(train=True, **kwargs)
     val_set = AachenTriplet(train=False, **val_kwargs)
   elif args.dataset == 'Cambridge':
