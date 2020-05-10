@@ -37,7 +37,7 @@ class Triplet:
 class AachenTriplet(data_.Dataset):
     def __init__(self, data_path, train,transform=None, 
                 target_transform=None, style_dir = None,real_prob = 100,
-                train_split=20,seed=0,scene=None):
+                train_split=20,seed=0,scene=None,min_perceptual=False):
         np.random.seed(seed)
         self.data_path = data_path
         # MostSimPairs lists 20 other images that share the most number of 
@@ -47,10 +47,15 @@ class AachenTriplet(data_.Dataset):
         self.AllPairs_path = '../data/triplet/Aachen/AllPairs.txt'
         self.train = train
         #
-        self.real_prob = real_prob if self.train else 100
-        self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) if self.train else None
-        self.mean = self.style_dist[0] if self.train else None
-        self.cov = self.style_dist[1:] if self.train else None 
+        self.min_perceptual = min_perceptual
+        self.real_prob = real_prob
+        if self.real_prob != 100 or self.min_perceptual:
+            self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) 
+            self.mean = torch.tensor(self.style_dist[0],dtype=torch.float)
+            self.cov = torch.tensor(self.style_dist[1:],dtype=torch.float)
+            u, s, vh = np.linalg.svd(self.cov)
+            self.A = np.matmul(u,np.diag(s**0.5))
+            self.A = torch.tensor(self.A).float()
         #
         self.train_split = train_split
         print('train status: {}. \ntrain&val ratio: {}'.\
@@ -208,8 +213,11 @@ class AachenTriplet(data_.Dataset):
         print('loaded {} triplets for {} data points'.format(len(self.triplets),len(self.images)))
 
     def get_style(self,img_shape):
-        embedding = np.random.multivariate_normal(self.mean, self.cov,1)
-        style_stats = torch.tensor(embedding.reshape((2,512)),dtype=torch.float)
+        embedding = torch.randn(1,1024)
+        embedding = torch.mm(embedding,self.A.transpose(1,0)) + self.mean
+        #embedding = np.random.multivariate_normal(self.mean, self.cov,1)
+        style_stats = embedding.reshape((2,512))
+
 
         return style_stats
 
