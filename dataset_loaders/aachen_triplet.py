@@ -246,26 +246,35 @@ class AachenTriplet(data_.Dataset):
         pos = self.transform(pos)
         neg = self.transform(neg)
         
-        style_idx = torch.zeros(3)
-        draw = np.random.randint(low=1,high=101,size=1)
-        if draw > self.real_prob and self.train:
+        if not self.min_perceptual:
+            style_idx = torch.zeros(3)
+            draw = np.random.randint(low=1,high=101,size=1)
+            if draw > self.real_prob:
+                anchor_style = self.get_style(anchor.shape)
+                style_idx[1] = 1
+            else:
+                anchor_style = torch.zeros(2,512)
+            
+            draw = np.random.randint(low=1,high=101,size=1)
+            if draw > self.real_prob:
+                pos_style = self.get_style(pos.shape)
+                style_idx[0] = 1
+            else:
+                pos_style = torch.zeros(2,512)
+
+            draw = np.random.randint(low=1,high=101,size=1)
+            if draw > self.real_prob:
+                neg_style = self.get_style(neg.shape)
+                style_idx[2] = 1
+            else:
+                neg_style = torch.zeros(2,512)
+        else:
+            style_idx = torch.zeros(3)
+            
             anchor_style = self.get_style(anchor.shape)
             style_idx[1] = 1
-        else:
-            anchor_style = torch.zeros(2,512)
         
-        draw = np.random.randint(low=1,high=101,size=1)
-        if draw > self.real_prob and self.train:
-            pos_style = self.get_style(pos.shape)
-            style_idx[0] = 1
-        else:
             pos_style = torch.zeros(2,512)
-
-        draw = np.random.randint(low=1,high=101,size=1)
-        if draw > self.real_prob and self.train:
-            neg_style = self.get_style(neg.shape)
-            style_idx[2] = 1
-        else:
             neg_style = torch.zeros(2,512)
         #triplet_idx = self.triplets_idx[index]
         #print(anchor.shape,pos.shape,neg.shape)
