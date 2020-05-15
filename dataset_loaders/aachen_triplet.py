@@ -222,67 +222,67 @@ class AachenTriplet(data_.Dataset):
         return style_stats
 
     def __getitem__(self, index):
-        
-        triplet = self.triplets[index]
-        #print('anchor: ',triplet.anchor_path)
-        anchor = load_image(triplet.anchor_path)
-        anchor_pose = triplet.anchor_pose
+        if self.train:
+            triplet = self.triplets[index]
+            #print('anchor: ',triplet.anchor_path)
+            anchor = load_image(triplet.anchor_path)
+            anchor_pose = triplet.anchor_pose
 
-        pos_idx = np.random.randint(low=0,high=len(triplet.pos_paths),size=1).item()
-        pos = load_image(triplet.pos_paths[pos_idx])
-        #print('pos:', triplet.pos_paths[pos_idx])
-        pos_pose = triplet.pos_poses[pos_idx]
+            pos_idx = np.random.randint(low=0,high=len(triplet.pos_paths),size=1).item()
+            pos = load_image(triplet.pos_paths[pos_idx])
+            #print('pos:', triplet.pos_paths[pos_idx])
+            pos_pose = triplet.pos_poses[pos_idx]
 
-        neg_idx = np.random.randint(low=0,high=len(triplet.neg_paths),size=1).item()
-        neg = load_image(triplet.neg_paths[neg_idx])
-        neg_pose = triplet.neg_poses[neg_idx]
-        #print('neg:',triplet.neg_paths[neg_idx])
-        if self.target_transform is not None:
-            anchor_pose = self.target_transform(anchor_pose)
-            pos_pose = self.target_transform(pos_pose)
-            neg_pose = self.target_transform(neg_pose)
-        
-        anchor = self.transform(anchor)
-        pos = self.transform(pos)
-        neg = self.transform(neg)
-        
-        if not self.min_perceptual:
-            style_idx = torch.zeros(3)
-            draw = np.random.randint(low=1,high=101,size=1)
-            if draw > self.real_prob:
+            neg_idx = np.random.randint(low=0,high=len(triplet.neg_paths),size=1).item()
+            neg = load_image(triplet.neg_paths[neg_idx])
+            neg_pose = triplet.neg_poses[neg_idx]
+            #print('neg:',triplet.neg_paths[neg_idx])
+            if self.target_transform is not None:
+                anchor_pose = self.target_transform(anchor_pose)
+                pos_pose = self.target_transform(pos_pose)
+                neg_pose = self.target_transform(neg_pose)
+            
+            anchor = self.transform(anchor)
+            pos = self.transform(pos)
+            neg = self.transform(neg)
+            
+            if not self.min_perceptual:
+                style_idx = torch.zeros(3)
+                draw = np.random.randint(low=1,high=101,size=1)
+                if draw > self.real_prob:
+                    anchor_style = self.get_style(anchor.shape)
+                    style_idx[1] = 1
+                else:
+                    anchor_style = torch.zeros(2,512)
+                
+                draw = np.random.randint(low=1,high=101,size=1)
+                if draw > self.real_prob:
+                    pos_style = self.get_style(pos.shape)
+                    style_idx[0] = 1
+                else:
+                    pos_style = torch.zeros(2,512)
+
+                draw = np.random.randint(low=1,high=101,size=1)
+                if draw > self.real_prob:
+                    neg_style = self.get_style(neg.shape)
+                    style_idx[2] = 1
+                else:
+                    neg_style = torch.zeros(2,512)
+            else:
+                style_idx = torch.zeros(3)
+                
                 anchor_style = self.get_style(anchor.shape)
                 style_idx[1] = 1
-            else:
-                anchor_style = torch.zeros(2,512)
             
-            draw = np.random.randint(low=1,high=101,size=1)
-            if draw > self.real_prob:
-                pos_style = self.get_style(pos.shape)
-                style_idx[0] = 1
-            else:
                 pos_style = torch.zeros(2,512)
-
-            draw = np.random.randint(low=1,high=101,size=1)
-            if draw > self.real_prob:
-                neg_style = self.get_style(neg.shape)
-                style_idx[2] = 1
-            else:
                 neg_style = torch.zeros(2,512)
-        else:
-            style_idx = torch.zeros(3)
-            
-            anchor_style = self.get_style(anchor.shape)
-            style_idx[1] = 1
+            #triplet_idx = self.triplets_idx[index]
+            #print(anchor.shape,pos.shape,neg.shape)
+            real_triplet = torch.stack((pos,anchor,neg),dim=0)
+            style_triplet = torch.stack((pos_style,anchor_style,neg_style),dim=0)
+            pose_triplet = torch.stack((pos_pose,anchor_pose,neg_pose),dim=0)
+            return (real_triplet, style_triplet,style_idx),pose_triplet
         
-            pos_style = torch.zeros(2,512)
-            neg_style = torch.zeros(2,512)
-        #triplet_idx = self.triplets_idx[index]
-        #print(anchor.shape,pos.shape,neg.shape)
-        real_triplet = torch.stack((pos,anchor,neg),dim=0)
-        style_triplet = torch.stack((pos_style,anchor_style,neg_style),dim=0)
-        pose_triplet = torch.stack((pos_pose,anchor_pose,neg_pose),dim=0)
-        return (real_triplet, style_triplet,style_idx),pose_triplet
-        '''
         else:
             img = load_image(self.images[index].path)
             if self.target_transform is not None:
@@ -290,8 +290,8 @@ class AachenTriplet(data_.Dataset):
             
             img = self.transform(img)
 
-            return (img,0),pose
-        '''
+            return (img,0,0),pose
+        
     def __len__(self):
       return self.poses.shape[0]
 

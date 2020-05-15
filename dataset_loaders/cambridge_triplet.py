@@ -154,7 +154,7 @@ class CambridgeTriplet(data_.Dataset):
         
             # kept for training or val
             kept_images = list(imgs_poses.keys())
-
+            left_out = 0
             for i,img in enumerate(self.points):
 
                 path_parts = img.img_path.split('/')
@@ -182,8 +182,12 @@ class CambridgeTriplet(data_.Dataset):
                     triplet.neg_poses = [imgs_poses[neg] for neg in neg_names]
 
                     if len(triplet.pos_paths) == 0 or len(triplet.neg_paths) == 0:
+                        left_out += 1
                         continue
                 self.triplets.append(triplet)
+            print('# most similar pairs: {}'.format(len(list(MostSimPairs_dict.keys()))))
+            print('# all similar pairs: {}'.format(len(list(AllPairs_dict.keys()))))
+            print('left out: {}'.format(left_out))
             print('loaded {} triplets for {} data points'.format(len(self.triplets),len(self.points)))
 
     def get_style(self,img_shape):

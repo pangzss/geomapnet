@@ -57,9 +57,14 @@ class AachenDayNight(data_.Dataset):
         self.train = train
         #
         self.real_prob = real_prob if self.train else 100
-        self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) if self.train else None
-        self.mean = self.style_dist[0] if self.train else None
-        self.cov = self.style_dist[1:] if self.train else None 
+    
+        if self.real_prob != 100:
+            self.style_dist = np.loadtxt(os.path.join('..','data',style_dir)) 
+            self.mean = torch.tensor(self.style_dist[0],dtype=torch.float)
+            self.cov = torch.tensor(self.style_dist[1:],dtype=torch.float)
+            u, s, vh = np.linalg.svd(self.cov)
+            self.A = np.matmul(u,np.diag(s**0.5))
+            self.A = torch.tensor(self.A).float()
         #self.style_dir = style_dir+'_stats_AachenDayNight' if self.train else None
         #self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
         #print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
@@ -174,8 +179,10 @@ class AachenDayNight(data_.Dataset):
             #style_stats = np.loadtxt(style_stats_path)
             
             #style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
-            embedding = np.random.multivariate_normal(self.mean, self.cov,1)
-            style_stats = torch.tensor(embedding.reshape((2,512)),dtype=torch.float)
+            embedding = torch.randn(1,1024)
+            embedding = torch.mm(embedding,self.A.transpose(1,0)) + self.mean
+            #embedding = np.random.multivariate_normal(self.mean, self.cov,1)
+            style_stats = embedding.reshape((2,512))
           
             #img_t = self.transform(img)
             img_t = self.transform(img)

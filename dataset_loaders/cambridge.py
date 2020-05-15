@@ -202,7 +202,7 @@ def main():
      )
     
     data_path = '../data/deepslam_data/Cambridge'
-    scene = 'ShopFacade'
+    scene = 'KingsCollege'
     train = True
     dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=0,style_dir='pbn_test_embedding_dist.txt')
     print('Loaded Cambridge training data, length = {:d}'.format(
