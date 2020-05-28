@@ -39,11 +39,11 @@ if 'CUDA_VISIBLE_DEVICES' not in os.environ:
 settings = configparser.ConfigParser()
 with open(args.config_file, 'r') as f:
   settings.read_file(f)
-seed = settings.getint('training', 'seed')
+seed = 0#settings.getint('training', 'seed')
 section = settings['hyperparameters']
 dropout = section.getfloat('dropout')
 train_split = section.getint('train_split', 6)
-if (args.model.find('mapnet') >= 0):
+if args.model.find('mapnet') >= 0:
     steps = section.getint('steps')
     skip = section.getint('skip')
     real = section.getboolean('real')

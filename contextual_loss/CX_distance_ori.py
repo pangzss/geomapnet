@@ -241,7 +241,7 @@ def CX_loss(T_features, I_features, deformation=False, dis=False):
 
         # reduce mean over C dim
         CS = torch.mean(k_max_NC, dim=1)
-        print(CS)
+
         # score = 1/CS
         # score = torch.exp(-CS*10)
         score = -torch.log(CS)

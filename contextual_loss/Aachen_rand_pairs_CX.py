@@ -14,7 +14,7 @@ import cv2
 from PIL import ImageDraw
 from PIL import ImageFont
 
-from CX_distance import CX_loss
+from CX_distance_ori import CX_loss
 
 features = {}
 # hook
@@ -108,6 +108,7 @@ for idx in range(116):
     input_img1 = input_img1.cuda()
     input_img2 = input_img2.cuda()
 
+    cx_collector = []
     for num_styles in [0,4,8,16]:
         model = models[num_styles]
         feats_go = get_feats(model,layer,block)
@@ -118,8 +119,12 @@ for idx in range(116):
 
         cx_loss = CX_loss(img1_feats, img2_feats)
         cx_loss = cx_loss.item()
-        cx_loss_dict[num_styles].append(cx_loss)
+        if not np.isnan(cx_loss):
+            cx_collector.append(cx_loss)
 
+    if len(cx_collector) == 4:
+        for i, num_styles in enumerate([0, 4, 8, 16]):
+            cx_loss_dict[num_styles].append(cx_collector[i])
         #feats_go.hook.remove()
 
 with open(osp.join(mode_folder,'layer_{}_block_{}_cx_loss.txt'.format(layer,block)), 'w') as f:

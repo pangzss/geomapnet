@@ -14,7 +14,7 @@ import cv2
 from PIL import ImageDraw
 from PIL import ImageFont
 
-from CX_distance import CX_loss
+#from CX_distance import CX_loss
 
 def adjacent_values(vals, q1, q3):
     upper_adjacent_value = q3 + (q3 - q1) * 1.5
@@ -35,12 +35,13 @@ def set_axis_style(ax, labels):
 
 num_blocks = [3,4,6,3]
 
-for layer in range(1,4+1):
+for layer in range(4,4+1):
     for block in range(0,num_blocks[layer-1]):
+        print(layer,block)
         # define root folder
         dataset = 'AachenPairs'
         root_folder = osp.join('./figs',dataset+'_files')
-        mode_folder = osp.join(root_folder,'contextual_loss_rand_pairs')
+        mode_folder = osp.join(root_folder,'contextual_loss')
 
         with open(osp.join(mode_folder,'layer_{}_block_{}_cx_loss.txt'.format(layer,block)), 'r') as f:
                 cx_loss_dict = eval(f.read())

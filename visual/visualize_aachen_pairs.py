@@ -13,7 +13,8 @@ from skimage.transform import resize
 from skimage.exposure import match_histograms
 from skimage.filters import sobel
 from guidedbp_vanilla import pipe_line
-from guidedbp_layer import pipe_line as pipeline_layer
+#from guidedbp_layer import pipe_line as pipeline_layer
+from smooth_grads import SmoothGradients
 from optm_visual import optm_visual
 from torchvision import models
 import configparser
@@ -24,41 +25,24 @@ from scipy.io import loadmat
 from PIL import ImageDraw
 from PIL import ImageFont
 
-colors = loadmat('logs/color150.mat')['colors']
+#colors = loadmat('logs/color150.mat')['colors']
 
 # get model
-weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
-                4: 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
-                8:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
-                16: 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar'}       
-weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[0])
-model_0 = get_model(weights_dir)
-model_0.cuda()
-model_0.eval()
-
-weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[4])
-model_4 = get_model(weights_dir)
-model_4.cuda()
-model_4.eval()
-
-weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[8])
-model_8 = get_model(weights_dir)
-model_8.cuda()
-model_8.eval()
-
-weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[16])
-model_16 = get_model(weights_dir)
-model_16.cuda()
-model_16.eval()
-
-models = {0:model_0,
-          4:model_4,
-          8:model_8,
-          16:model_16}
-# define root folder
-
+weights_names = ['AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
+                 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
+                 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
+                 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar']
+SG_list = []
+param_n = 25
+param_sigma_multiplier = 3
+to_size = (224,224)# define root folder
+for name in weights_names:
+    weights_dir = osp.join('../scripts/logs/stylized_models', name)
+    SG_list.append(
+        SmoothGradients(get_model(weights_dir).cuda().eval(), 4, 2, param_n, param_sigma_multiplier, mode='GBP',
+                        to_size=to_size))
 layer = 4
-block = 0
+block = 2
 
 dataset = 'AachenPairs'
 root_folder = osp.join('./figs',dataset+'_files')
@@ -99,7 +83,7 @@ for idx,pair in enumerate(pairs[checkpoint:]):
 
     idx += checkpoint
     G_row = []
-    for num_styles in [0,4,8,16]:
+    for i,num_styles in enumerate([0,4,8,16]):
         
         print('Processing pair {}, style {}'.format(idx+1, num_styles))
         
@@ -122,8 +106,8 @@ for idx,pair in enumerate(pairs[checkpoint:]):
         day = load_image(day_path)
         night = load_image(night_path)
         # preprocess an image, return a pytorch variable
-        input_day = preprocess(day)
-        input_night = preprocess(night)
+        input_day = preprocess(day,to_size)
+        input_night = preprocess(night,to_size)
 
         day = np.asarray(day.resize(to_size))
         night = np.asarray(night.resize(to_size))
@@ -136,7 +120,7 @@ for idx,pair in enumerate(pairs[checkpoint:]):
             G_row.append(skip_row)
         # start visualization
         if not os.path.exists(grads_path_day):
-            guided_grads_day = pipeline_layer(input_day, models[num_styles], layer, block,to_size)
+            guided_grads_day = SG_list[i].pipe_line(input_day.cuda())
             with open(grads_path_day,'wb') as f:
                 pickle.dump(guided_grads_day,f)
         else:
@@ -144,7 +128,7 @@ for idx,pair in enumerate(pairs[checkpoint:]):
                 guided_grads_day = pickle.load(f)
         
         if not os.path.exists(grads_path_night):
-            guided_grads_night = pipeline_layer(input_night, models[num_styles], layer, block,to_size)
+            guided_grads_night = SG_list[i].pipe_line(input_night.cuda())
             with open(grads_path_night,'wb') as f:
                 pickle.dump(guided_grads_night,f)
         else:

@@ -13,7 +13,8 @@ from skimage.transform import resize
 from skimage.exposure import match_histograms
 from skimage.filters import sobel
 from guidedbp_vanilla import pipe_line
-from guidedbp_layer import pipe_line as pipeline_layer
+#from guidedbp_layer import pipe_line as pipeline_layer
+from smooth_grads import SmoothGradients
 from optm_visual import optm_visual
 from torchvision import models
 import configparser
@@ -24,13 +25,14 @@ from scipy.io import loadmat
 from PIL import ImageDraw
 from PIL import ImageFont
 
-colors = loadmat('logs/color150.mat')['colors']
+colors = loadmat('../../logs/color150.mat')['colors']
 
 # get model
-weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
-                4: 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
-                8:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
-                16: 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar'}       
+weights_names = ['AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
+                 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
+                'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
+                 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar']
+'''
 weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[0])
 model_0 = get_model(weights_dir)
 model_0.cuda()
@@ -50,11 +52,15 @@ weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[16])
 model_16 = get_model(weights_dir)
 model_16.cuda()
 model_16.eval()
+'''
+SG_list = []
+param_n = 25
+param_sigma_multiplier = 3
+to_size = (112,112)
 
-models = {0:model_0,
-          4:model_4,
-          8:model_8,
-          16:model_16}
+for name in weights_names:
+    weights_dir = osp.join('../scripts/logs/stylized_models',name)
+    SG_list.append(SmoothGradients(get_model(weights_dir).cuda().eval(),4,2,param_n, param_sigma_multiplier, mode = 'GBP',to_size=to_size))
 # define root folder
 dataset = 'AachenNight'
 root_folder = osp.join('./figs',dataset+'_files')
@@ -96,7 +102,7 @@ for layer in range(1,4+1):
             idx += checkpoint
             grads_normld_list = []
             label_list = []
-            for num_styles in [0,4,8,16]:
+            for i,num_styles in enumerate([0,4,8,16]):
             
                 print('Processing image {}/{}, style {}'.format(idx,len(img_dirs)-1, num_styles))
                 
@@ -138,7 +144,7 @@ for layer in range(1,4+1):
                 label_list.append(label)
 
                 if not os.path.exists(grads_path):
-                    guided_grads = pipeline_layer(input_img, models[num_styles], layer, block,to_size)
+                    guided_grads = SG_list[i].pipe_line(input_img.cuda())
                     with open(grads_path,'wb') as f:
                         pickle.dump(guided_grads,f)
                 else:

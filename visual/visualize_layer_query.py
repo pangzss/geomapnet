@@ -59,7 +59,7 @@ margin = 3
 num_blocks = [3,4,6,3]
 
 layer = 4
-block = 2
+block = 1
         
 img_dirs = top_img_dirs['layer'+str(layer)]['block'+str(block)]
 

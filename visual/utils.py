@@ -89,11 +89,11 @@ def convert_to_grayscale(im_as_arr):
     returns:
         grayscale_im (numpy_arr): Grayscale image with shape (1,W,D)
     """
-    grayscale_im = np.sum(np.abs(im_as_arr), axis=0)
+    grayscale_im = np.sum(np.abs(im_as_arr), axis=2)
     im_max = np.percentile(grayscale_im, 99)
     im_min = np.min(grayscale_im)
     grayscale_im = (np.clip((grayscale_im - im_min) / (im_max - im_min), 0, 1))
-    grayscale_im = np.expand_dims(grayscale_im, axis=0)
+    #grayscale_im = np.expand_dims(grayscale_im, axis=2)
     return grayscale_im
 def save_original_images(img, path, file_name):
     """
@@ -166,9 +166,9 @@ def save_image(im, path):
         
     im.save(path)
 
-def preprocess(img):
+def preprocess(img,to_size=(112,112)):
 
-    img = np.asarray(img.resize((224, 224))) # resize to 224 * 224 (W * H), np.asarray returns (H, W, C)
+    img = np.asarray(img.resize(to_size)) # resize to 224 * 224 (W * H), np.asarray returns (H, W, C)
     img = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -224,6 +224,8 @@ def norm_std(img,scale=0.05):
     x += 0.3
     x *= 255
     x = np.clip(x, 0, 255).astype('uint8')
+    print('max:',x.max())
+
     return x
 
 def get_img_from_fig(fig, dpi=180):
@@ -295,3 +297,21 @@ def colorEncode(labelmap, colors, mode='RGB'):
         return labelmap_rgb[:, :, ::-1]
     else:
         return labelmap_rgb
+
+if __name__ == '__main__':
+    '''
+    import pickle
+    import matplotlib.pyplot as plt
+    grads_path = "grads_layer_4_block_2_model_0_data_0_img_3.txt"
+    with open(grads_path, 'rb') as f:
+        guided_grads = pickle.load(f)
+    guided_grads = np.clip(guided_grads, 0, guided_grads.max())
+    #guided_grads = np.uint8(((guided_grads-guided_grads.min())/(guided_grads.max()-guided_grads.min()))*255)
+    # grads_output = (guided_grads - guided_grads.min())
+    grads_output = norm_std(guided_grads.copy())
+    plt.imshow(grads_output)
+    plt.show()
+    '''
+    a = np.array([0.,1.,2.,3.,4.,5.])
+    b = 2*a
+    print(norm_std((a)),norm_std(b))

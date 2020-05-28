@@ -14,7 +14,7 @@ import cv2
 from PIL import ImageDraw
 from PIL import ImageFont
 
-from CX_distance import CX_loss
+from CX_distance_ori import CX_loss
 
 features = {}
 # hook
@@ -91,7 +91,7 @@ else:
 
 
 # hook layers
-layer = 1
+layer = 4
 block = 0
 
 cx_loss_dict = {}
@@ -119,6 +119,7 @@ for idx,pair in enumerate(pairs):
     input_day = input_day.cuda()
     input_night = input_night.cuda()
 
+    cx_collector = []
     for num_styles in [0,4,8,16]:
         model = models[num_styles]
         feats_go = get_feats(model,layer,block)
@@ -129,7 +130,12 @@ for idx,pair in enumerate(pairs):
 
         cx_loss = CX_loss(day_feats, night_feats)
         cx_loss = cx_loss.item()
-        cx_loss_dict[num_styles].append(cx_loss)
+        if not np.isnan(cx_loss):
+            cx_collector.append(cx_loss)
+
+    if len(cx_collector) == 4:
+        for i,num_styles in enumerate([0,4,8,16]):
+            cx_loss_dict[num_styles].append(cx_collector[i])
 
         #feats_go.hook.remove()
 

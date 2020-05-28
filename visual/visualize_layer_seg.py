@@ -13,7 +13,8 @@ from skimage.transform import resize
 from skimage.exposure import match_histograms
 from skimage.filters import sobel
 from guidedbp_vanilla import pipe_line
-from guidedbp_layer import pipe_line as pipeline_layer
+#from guidedbp_layer import pipe_line as pipeline_layer
+from smooth_grads import SmoothGradients
 from optm_visual import optm_visual
 from torchvision import models
 import configparser
@@ -24,7 +25,7 @@ from scipy.io import loadmat
 from PIL import ImageDraw
 from PIL import ImageFont
 
-colors = loadmat('logs/color150.mat')['colors']
+colors = loadmat('../../logs/color150.mat')['colors']
 #config 
 parser = argparse.ArgumentParser(description='Filter visualization for MapNet with ResNet34')
 parser.add_argument('--dataset', type=str, choices=('7Scenes','AachenDay','AachenNight',
@@ -36,10 +37,12 @@ args = parser.parse_args()
 
 
 # get model
-weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
-                4: 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
-                8:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
-                16: 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar'}       
+
+weights_names = ['AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
+                 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',
+                'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_8_styles_seed0.pth.tar',
+                 'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_stylized_16_styles_seed0.pth.tar']
+'''
 weights_dir = osp.join('../scripts/logs/stylized_models',weights_name[0])
 model_0 = get_model(weights_dir)
 model_0.cuda()
@@ -64,7 +67,17 @@ models = {0:model_0,
           4:model_4,
           8:model_8,
           16:model_16}
+'''
+# get model
 
+SG_list = []
+param_n = 25
+param_sigma_multiplier = 3
+to_size = (112,112)
+
+for name in weights_names:
+    weights_dir = osp.join('../scripts/logs/stylized_models',name)
+    SG_list.append(SmoothGradients(get_model(weights_dir).cuda().eval(),4,2,param_n, param_sigma_multiplier, mode = 'GBP',to_size=to_size))
 
 # define root folder
 root_folder = osp.join('./figs',args.dataset+'_files')
@@ -73,7 +86,7 @@ topk = 8
 if not os.path.exists(mode_folder):
     os.makedirs(mode_folder)
 if not os.path.exists(osp.join(mode_folder,'top_img_dirs.txt')):
-    model_0 = get_model(osp.join('../scripts/logs/stylized_models',weights_name[0]))
+    model_0 = get_model(osp.join('../scripts/logs/stylized_models',weights_names[0]))
     top_img_dirs = top_images(model_0,args.dataset,topk=topk)
     with open(osp.join(mode_folder,'top_img_dirs.txt'),'wb') as f:
         pickle.dump(top_img_dirs,f)
@@ -82,7 +95,7 @@ else:
         top_img_dirs = pickle.load(f)
 
 # start guided bp/ vanilla
-to_size = (112,112)
+#to_size = (256,256)
 margin = 3
 num_blocks = [3,4,6,3]
 
@@ -91,8 +104,8 @@ num_blocks = [3,4,6,3]
 
 num_blocks = [3,4,6,3]
 
-for layer in range(1,4+1):
-    for block in range(0,num_blocks[layer-1]):
+for layer in range(4,4+1):
+    for block in range(2,num_blocks[layer-1]):
         img_dirs = top_img_dirs['layer'+str(layer)]['block'+str(block)]
 
         G_row = []
@@ -109,7 +122,7 @@ for layer in range(1,4+1):
             grads_list = []
             grads_normld_list = []
             label_list = []
-            for num_styles in [0,4,8,16]:
+            for i,num_styles in enumerate([0,4,8,16]):
             
                 print("Working with the top {} image. Current model trained with {} styles".format(top_i+1,num_styles))
 
@@ -162,7 +175,8 @@ for layer in range(1,4+1):
                     G_col.append(np.uint8(np.ones((to_size[0],margin,3))*255))
                 
                 if not os.path.exists(grads_path):
-                    guided_grads = pipeline_layer(input_img, models[num_styles], layer, block,to_size)
+                    #guided_grads = pipeline_layer(input_img, models[num_styles], layer, block,to_size)
+                    guided_grads = SG_list[i].pipe_line(input_img.cuda())
                     with open(grads_path,'wb') as f:
                         pickle.dump(guided_grads,f)
                 else:
@@ -293,6 +307,12 @@ for layer in range(1,4+1):
             #    if i != 3:
             #        G_col.append(np.uint8(np.ones((to_size[0],margin,3))*255))
             G_col = np.concatenate(G_col, axis=1)
+
+            file_name_to_export = 'layer_' + str(layer) + '_block_' + str(block)+'_{}'.format(top_i)
+            to_folder = osp.join(mode_folder)
+
+            save_original_images(G_col, to_folder, file_name_to_export)
+
             discrep_col = np.concatenate(discrep_col,axis=1)
             carved_col = np.concatenate(carved_col,axis=1)
             #hist_col = np.concatenate(hist_col,axis=1)

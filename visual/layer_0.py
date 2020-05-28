@@ -26,7 +26,7 @@ def patches_grid(patches): # feat_map: (C, H, W, 1)
 
     return G
 G_all = []
-for style in [0,4,8,16]:
+for style in [0]:
 
     weights_name = {0:'AachenDayNight__mapnet_mapnet_learn_beta_learn_gamma_baseline.pth.tar',
                 4: 'AachenDayNight__mapnet_stylized_4_styles_seed0.pth.tar',

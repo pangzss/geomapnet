@@ -71,7 +71,7 @@ for layer in range(1,4+1):
             axes[int(i>=2),i%2].vlines(inds, quartile1, quartile3, color='k', linestyle='-', lw=5)
             axes[int(i>=2),i%2].vlines(inds, whiskersMin, whiskersMax, color='k', linestyle='-', lw=1)
             #axes[int(i>=2),i%2].set_xlabel('gradient')
-            axes[int(i>=2),i%2].set_ylabel('Gradient ratio') #r'$\sum_{k}{grad_{i\_label\{k\}}}/$'
+            axes[int(i>=2),i%2].set_ylabel('Modified gradients') #r'$\sum_{k}{grad_{i\_label\{k\}}}/$'
             axes[int(i>=2),i%2].set_title(label if label is not 'sky' else 'near_sky')
             set_axis_style(axes[int(i>=2),i%2],[0,4,8,16])
 

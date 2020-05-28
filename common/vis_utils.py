@@ -10,6 +10,7 @@ from PIL import Image
 def show_batch(batch):
   npimg = batch.numpy()
   plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')
+  plt.axis('off')
   plt.show()
 
 def show_stereo_batch(l_batch, r_batch):

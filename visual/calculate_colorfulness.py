@@ -70,8 +70,8 @@ for layer in range(1,4+1):
 
                 guided_grads = np.clip(guided_grads,0,guided_grads.max())
 
-                grads_normld = (guided_grads - guided_grads.min())/(guided_grads.max()-guided_grads.min())
-                
+                grads_normld = np.uint8(255*(guided_grads - guided_grads.min())/(guided_grads.max()-guided_grads.min())
+               )
                 #colness = image_colorfulness(grads_normld)
                 hsv = cv2.cvtColor(grads_normld, cv2.COLOR_BGR2HSV)
                 hue_std = np.std(hsv[:,:,0])
