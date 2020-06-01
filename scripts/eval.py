@@ -37,7 +37,7 @@ parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','Aache
                     help='Dataset')
 parser.add_argument('--scene', type=str, help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
-parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++'),
+parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','SLocNet'),
   help='Model to use (mapnet includes both MapNet and MapNet++ since their'
        'evluation process is the same and they only differ in the input weights'
        'file')
@@ -49,6 +49,9 @@ parser.add_argument('--output_dir', type=str, default=None,
   help='Output image directory')
 parser.add_argument('--pose_graph', action='store_true',
   help='Turn on Pose Graph Optimization')
+parser.add_argument('--brightness', type=float, default=1.,help='brightness')
+parser.add_argument('--hue', type=float, default=0., help='hue')
+
 args = parser.parse_args()
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
   os.environ['CUDA_VISIBLE_DEVICES'] = args.device
@@ -78,6 +81,10 @@ feature_extractor = models.resnet34(pretrained=False)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False)
 if (args.model.find('mapnet') >= 0) or args.pose_graph:
   model = MapNet(mapnet=posenet)
+elif args.model == 'SLocNet':
+  from models.posenet import SLocNet
+  from models.resizeConv_resnet import resizeConv_resnet
+  model = SLocNet(mapnet=posenet,decoder=resizeConv_resnet())
 else:
   model = posenet
 model.eval()
@@ -109,9 +116,24 @@ crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 # transformer
+
 data_transform = [transforms.Resize(resize)]
 if args.dataset == 'AachenDayNight':
   data_transform.append(transforms.CenterCrop(crop_size))
+if args.hue != 0 or args.brightness != 1:
+  import torchvision.transforms.functional as TF
+  class MyTransform:
+    """Adjust hue and brightness"""
+
+    def __init__(self, hue=0,brightness=1):
+      self.hue = hue
+      self.brightness = brightness
+
+    def __call__(self, img):
+      img = TF.adjust_hue(img, self.hue)
+      img = TF.adjust_brightness(img,self.brightness)
+      return img
+  data_transform.append(MyTransform(args.hue,args.brightness))
 data_transform.append(transforms.ToTensor())
 data_transform.append(transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1])))
 data_transform = transforms.Compose(data_transform)
@@ -195,7 +217,9 @@ for batch_idx, (data, target) in enumerate(loader):
 
   # output : 1 x 6 or 1 x STEPS x 6
   _, output = step_feedfwd(data, model, CUDA, train=False)
-  s = output.size()
+  if args.model == 'SLocNet':
+    output = output[0]
+    s = output.size()
   
   output = output.cpu().data.numpy().reshape((-1, s[-1]))
   target = target.numpy().reshape((-1, s[-1]))
@@ -261,8 +285,8 @@ else:
   ax.scatter(x[1, :], y[1, :], zs=z[1, :], c='g', depthshade=0)
   ax.view_init(azim=119, elev=13)
 
-if DISPLAY:
-  plt.show(block=True)
+#if DISPLAY:
+  #plt.show(block=True)
 
 if args.output_dir is not None:
   model_name = args.model

@@ -14,11 +14,14 @@ from torch import nn
 import torch.nn.functional as F
 class Loss:
   def __init__(self, abs_loss=(torch.tensor(0.0),torch.tensor(0.0)), vo_loss=torch.tensor(0.0), 
-              triplet_loss=torch.tensor(0.0),perceptual_loss=torch.tensor(0.0),final_loss=torch.tensor(0.0)):
+              triplet_loss=torch.tensor(0.0),perceptual_loss=torch.tensor(0.0),
+               content_loss=torch.tensor(0.0),style_loss=torch.tensor(0.0),final_loss=torch.tensor(0.0)):
         self.abs_loss = abs_loss
         self.vo_loss = vo_loss
         self.triplet_loss = triplet_loss
         self.perceptual_loss = perceptual_loss
+        self.content_loss = content_loss
+        self.style_loss = style_loss
         self.final_loss = final_loss
 class QuaternionLoss(nn.Module):
   """
@@ -314,4 +317,122 @@ class TripletCriterion(nn.Module):
            pose_loss
 
     loss_ = Loss(abs_loss=(t_loss,q_loss),vo_loss=vo_loss,triplet_loss=triplet_loss,perceptual_loss=perceptual_loss,final_loss=loss)
+    return loss_
+
+class SLocNetCriterion(nn.Module):
+  def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,
+               saq=0.0, srx=0, srq=0.0, sc=0.0, sp=0.0,
+               learn_beta=False, learn_gamma=False,
+               learn_sigma=False):
+    """
+    Implements L_D from eq. 2 in the paper
+    :param t_loss_fn: loss function to be used for translation
+    :param q_loss_fn: loss function to be used for rotation
+    :param sax: absolute translation loss weight
+    :param saq: absolute rotation loss weight
+    :param srx: relative translation loss weight
+    :param srq: relative rotation loss weight
+    :param learn_beta: learn sax and saq?
+    :param learn_gamma: learn srx and srq?
+    """
+    super(SLocNetCriterion, self).__init__()
+    from contextual_loss.CX_distance import CX_sim, CX_sim_NNDR, CX_sim_dii
+    self.CS = CX_sim
+    self.CS_NNDR = CX_sim_NNDR
+    self.CS_dii = CX_sim_dii
+    self.mse = nn.MSELoss()
+    self.margin = 0.5
+    self.sc = nn.Parameter(torch.Tensor([sc]), requires_grad=learn_sigma)
+    self.sp = nn.Parameter(torch.Tensor([sp]), requires_grad=learn_sigma)
+
+    self.t_loss_fn = t_loss_fn
+    self.q_loss_fn = q_loss_fn
+    self.sax = nn.Parameter(torch.Tensor([sax]), requires_grad=learn_beta)
+    self.saq = nn.Parameter(torch.Tensor([saq]), requires_grad=learn_beta)
+    self.srx = nn.Parameter(torch.Tensor([srx]), requires_grad=learn_gamma)
+    self.srq = nn.Parameter(torch.Tensor([srq]), requires_grad=learn_gamma)
+
+  def forward(self, output, targ):
+    """
+    :param pred: N x T x 6
+    :param targ: N x T x 6
+    :return:
+    """
+    pred = output[0]
+    feats = output[1][0]
+    content_loss = output[1][1]
+    style_loss = output[1][2]
+    s = pred.size()
+    if s[1] == 4:
+      pred_style = pred[:, 3].clone()
+      targ_style = targ[:, 1].clone()
+      # pred_tuple = torch.stack([pred[:,1],pred[:,3]],dim=1)
+      # targ_tuple = torch.stack([targ[:,1],targ[:,1]],dim=1)
+
+      pred = pred[:, :3].clone()
+    # contextual triplet loss
+    triplet_loss = torch.tensor(0.0)
+    if feats is not None:
+      sim_ap = self.CS(feats[:, 1], feats[:, 0])
+      sim_an = self.CS(feats[:, 1], feats[:, 2])
+      triplet_loss = torch.mean(F.relu(sim_an - sim_ap + self.margin))
+    # perceptual loss
+    perceptual_loss = torch.tensor(0.0)
+    if feats is not None and s[1] == 4:
+      real_feats = feats[:, 1]
+      style_feats = feats[:, 3]
+
+      perceptual_loss = self.CS_dii(real_feats, style_feats)
+      #content_loss = self.mse(real_feats, style_feats)
+      perceptual_loss = torch.mean(perceptual_loss)
+
+    # style loss
+  #  style_loss = torch.tensor(0.0).cuda()
+    #if embeddings is not None and s[1] == 4:
+    #  for e in embeddings:
+    #    s_embedding = e[:,0][...,None,None]
+    #    t_embedding = e[:,1][...,None,None]
+        #style_loss += self.CS_dii(s_embedding,t_embedding)
+    #    style_loss_local = style_loss_local + self.mse(s_embedding, t_embedding)
+    #  style_loss = 5*style_loss_local
+    # absolute pose loss
+    t_loss = torch.exp(-self.sax) * self.t_loss_fn(pred.view(-1, s[-1])[:, :3],
+                                                   targ.view(-1, s[-1])[:, :3]) + self.sax
+    q_loss = torch.exp(-self.saq) * self.q_loss_fn(pred.view(-1, s[-1])[:, 3:],
+                                                   targ.view(-1, s[-1])[:, 3:]) + self.saq
+
+    t_loss_style = torch.tensor(0.0)
+    q_loss_style = torch.tensor(0.0)
+    if feats is not None and s[1] == 4:
+      t_loss_style = torch.exp(-self.sax) * self.t_loss_fn(pred_style.view(-1, s[-1])[:, :3],
+                                                           targ_style.view(-1, s[-1])[:, :3]) + self.sax
+      q_loss_style = torch.exp(-self.saq) * self.q_loss_fn(pred_style.view(-1, s[-1])[:, 3:],
+                                                           targ_style.view(-1, s[-1])[:, 3:]) + self.saq
+
+    abs_loss = t_loss + q_loss + t_loss_style + q_loss_style
+
+    # vo loss
+    # get the VOs
+    vo_loss = torch.tensor(0.0)
+    if feats is not None:
+      pred_vos = pose_utils.calc_vos_simple(pred)
+      targ_vos = pose_utils.calc_vos_simple(targ)
+
+      s = pred_vos.size()
+      vo_loss = \
+        torch.exp(-self.srx) * self.t_loss_fn(pred_vos.view(-1, *s[2:])[:, :3],
+                                              targ_vos.view(-1, *s[2:])[:, :3]) + \
+        self.srx + \
+        torch.exp(-self.srq) * self.q_loss_fn(pred_vos.view(-1, *s[2:])[:, 3:],
+                                              targ_vos.view(-1, *s[2:])[:, 3:]) + \
+        self.srq
+
+    pose_loss = abs_loss + vo_loss
+    # triplet loss + pose loss
+    loss = torch.exp(-self.sc) * (triplet_loss+perceptual_loss) + self.sc + \
+           torch.exp(-self.sp) * (content_loss+5*style_loss) + self.sp + \
+           pose_loss
+
+    loss_ = Loss(abs_loss=(t_loss, q_loss), vo_loss=vo_loss, triplet_loss=triplet_loss, perceptual_loss=perceptual_loss,
+                 content_loss=content_loss, style_loss = style_loss, final_loss=loss)
     return loss_

@@ -8,10 +8,12 @@ Main training script for MapNet
 """
 import set_paths
 from common.train import Trainer
+from common.train_SLocNet import Trainer as Trainer_SLocNet
 from common.optimizer import Optimizer
 from common.criterion import PoseNetCriterion, MapNetCriterion,\
-  MapNetOnlineCriterion, TripletCriterion
-from models.posenet import PoseNet, MapNet, TriNet, StripNet
+  MapNetOnlineCriterion, TripletCriterion, SLocNetCriterion
+from models.posenet import PoseNet, MapNet, TriNet, StripNet,SLocNet
+from models.resizeConv_resnet import resizeConv_resnet
 from dataset_loaders.composite import MF, MFOnline
 import os.path as osp
 import numpy as np
@@ -29,12 +31,12 @@ parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','Aache
 parser.add_argument('--scene', type=str, default = ' ', help='Scene name')
 parser.add_argument('--style_dir', type=str, help='the directory of style images')
 parser.add_argument('--real_prob', type=int, default=100, help='the prob of using real images')
-parser.add_argument('--alpha', type=float,default=1.0, help='intensity of stylization')
+parser.add_argument('--alpha', type=float,default=0.0, help='intensity of stylization')
 parser.add_argument('--mask', action='store_true')
 #parser.add_argument('--num_styles', type=int, help='number of styles')
 parser.add_argument('--t_aug', action='store_true', help='use traditional augmentation')
 parser.add_argument('--config_file', type=str, help='configuration file')
-parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet','stripnet'),
+parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet','stripnet','SLocNet'),
   help='Model to train')
 parser.add_argument('--device', type=str, default='0',
   help='value to be set to $CUDA_VISIBLE_DEVICES')
@@ -74,7 +76,7 @@ sp = section.getfloat('sigma_pc',0.0)
 sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
 train_split = section.getint('train_split', 6)
-if args.model.find('mapnet') >= 0 or args.model=='trinet' or args.model == 'stripnet':
+if args.model.find('mapnet') >= 0 or args.model=='trinet' or args.model == 'stripnet' or args.model == 'SLocNet':
   skip = section.getint('skip')
   real = section.getboolean('real')
   variable_skip = section.getboolean('variable_skip')
@@ -100,6 +102,7 @@ if seed >= 0:
 feature_extractor = models.resnet34(pretrained=True)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=True,
                   filter_nans=(args.model=='mapnet++'))
+
 if args.model == 'posenet':
   model = posenet
 elif args.model.find('mapnet') >= 0:
@@ -108,6 +111,9 @@ elif args.model == 'trinet':
   model = TriNet(mapnet=posenet)
 elif args.model == 'stripnet':
   model = StripNet(stripnet=posenet)
+elif args.model == 'SLocNet':
+  decoder = resizeConv_resnet()
+  model = SLocNet(mapnet=posenet,decoder=decoder)
 else:
   raise NotImplementedError
 
@@ -137,6 +143,11 @@ elif args.model == 'stripnet':
                 learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
   train_criterion = TripletCriterion(**kwargs)
   val_criterion = TripletCriterion()
+elif args.model == 'SLocNet':
+  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, sp=sp, learn_beta=args.learn_beta,
+                learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
+  train_criterion = SLocNetCriterion(**kwargs)
+  val_criterion = SLocNetCriterion()
 else:
   raise NotImplementedError
 
@@ -166,8 +177,7 @@ crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 # transformers
 if args.dataset == 'AachenDayNight':
-    tforms = [transforms.Resize(resize)]
-    tforms.append(transforms.CenterCrop(crop_size))
+    tforms = [transforms.Resize(resize), transforms.CenterCrop(crop_size)]
 else:
     tforms = [transforms.Resize(resize)]
 if color_jitter > 0:
@@ -181,8 +191,7 @@ data_transform = transforms.Compose(tforms)
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 # val transformers
 if args.dataset == 'AachenDayNight':
-    val_tforms = [transforms.Resize(resize)]
-    val_tforms.append(transforms.CenterCrop(crop_size))
+    val_tforms = [transforms.Resize(resize), transforms.CenterCrop(crop_size)]
 else:
     val_tforms = [transforms.Resize(resize)]
 val_tforms.append(transforms.ToTensor())
@@ -247,6 +256,12 @@ elif args.model == 'stripnet':
     kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
     train_set = CambridgeStripnet(train=True, **kwargs)
     val_set = CambridgeStripnet(train=False, **val_kwargs)
+elif args.model == 'SLocNet':
+  if args.dataset == 'Cambridge':
+    from dataset_loaders.cambridge_SLocNet import CambridgeSLocNet
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    train_set = CambridgeSLocNet(train=True, **kwargs)
+    val_set = CambridgeSLocNet(train=False, **val_kwargs)
 else:
   raise NotImplementedError
 
@@ -254,13 +269,14 @@ else:
 config_name = args.config_file.split('/')[-1]
 config_name = config_name.split('.')[0]
 if args.dataset == '7Scenes' or args.dataset == 'Cambridge':
-  experiment_name = '{:s}_{:s}_{:s}_{:s}'.format(args.dataset, args.scene,
-    args.model, config_name)
+  experiment_name = '{:s}_{:s}_{:s}'.format(args.dataset, args.scene,
+    args.model)
 else:
-  experiment_name = '{:s}_{:s}_{:s}'.format(args.dataset,
-    args.model, config_name)
+  experiment_name = '{:s}_{:s}'.format(args.dataset,
+    args.model)
 
-experiment_name = '{:s}_{}_percent_real'.format(experiment_name,args.real_prob)
+if args.real_prob != 100:
+  experiment_name = '{:s}_{}_percent_real'.format(experiment_name,args.real_prob)
 if args.learn_beta:
   experiment_name = '{:s}_beta'.format(experiment_name)
 if args.learn_gamma:
@@ -268,19 +284,32 @@ if args.learn_gamma:
 if args.learn_sigma:
   experiment_name = '{:s}_sigma'.format(experiment_name)
 
-experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha if args.alpha>=0 else 'Rand')
+if args.alpha != 0.0:
+  experiment_name = '{:s}_alpha{}'.format(experiment_name, args.alpha if args.alpha>=0 else 'Rand')
 if args.t_aug:
   experiment_name = '{:s}_aug'.format(experiment_name)
 if seed >= 0:
   experiment_name = '{:s}_seed{}'.format(experiment_name, seed) 
 experiment_name += args.suffix
-trainer = Trainer(model, optimizer, train_criterion, args.config_file,
-                  experiment_name, train_set, val_set, dataset_name=args.dataset,seed=seed, alpha=args.alpha,device=args.device,
-                  checkpoint_file=args.checkpoint,
-                  resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
-lstm = args.model == 'vidloc'
-trinet = args.model == 'trinet'
-if args.dataset == 'AachenDayNight' or args.dataset =='Cambridge':
-  trainer.style_train_val(trinet=trinet)
+if args.model != 'SLocNet':
+
+  trainer = Trainer(model, optimizer, train_criterion, args.config_file,
+                    experiment_name, train_set, val_set, dataset_name=args.dataset,seed=seed, alpha=args.alpha,device=args.device,
+                    checkpoint_file=args.checkpoint,
+                    resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
+  lstm = args.model == 'vidloc'
+  trinet = args.model == 'trinet'
+  if args.dataset == 'AachenDayNight' or args.dataset =='Cambridge':
+    trainer.style_train_val(trinet=trinet)
+  else:
+    trainer.train_val(lstm=lstm)
 else:
-  trainer.train_val(lstm=lstm)
+  trainer = Trainer_SLocNet(model, optimizer, train_criterion, args.config_file,
+                    experiment_name, train_set, val_set, dataset_name=args.dataset, seed=seed, alpha=args.alpha,
+                    device=args.device,
+                    checkpoint_file=args.checkpoint,
+                    resume_optim=args.resume_optim, val_criterion=val_criterion, visdom_server=args.server,
+                    visdom_port=args.port)
+
+
+  trainer.style_train_val()

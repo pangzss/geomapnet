@@ -221,7 +221,7 @@ def norm_std(img,scale=0.05):
     # make most of the value between [-0.5, 0.5]
     x *= scale
     # move to [0, 1]
-    x += 0.3
+    x += 0.5
     x *= 255
     x = np.clip(x, 0, 255).astype('uint8')
     print('max:',x.max())

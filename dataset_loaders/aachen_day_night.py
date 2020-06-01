@@ -92,8 +92,8 @@ class AachenDayNight(data_.Dataset):
         for i in tqdm.tqdm(range(len(pose_lines)), total=len(pose_lines),
                             desc='Read images and load pose', leave=False):
             pose_i = pose_lines[i]
-            if pose_i[0] == 'db/2048.jpg':
-                continue
+            #if pose_i[0] == 'db/2048.jpg':
+            #    continue
             # rotation quaternion
             q = [float(x) for x in pose_i[2:6]]
             # camera center

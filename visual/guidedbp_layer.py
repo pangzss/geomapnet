@@ -184,6 +184,7 @@ class GuidedBackprop:
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
     inv_normalize = transforms.Normalize(
    mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
    std=[1/0.229, 1/0.224, 1/0.225]
@@ -202,6 +203,14 @@ if __name__ == "__main__":
 
     idx = 'rand'
     GBP = GuidedBackprop(model,4,2, (224,224),filter_idx=idx)
+    guided_grads = GBP.pipe_line(input_img.cuda())
+    grads_output = guided_grads
+    #grads_output = np.clip(guided_grads, 0, guided_grads.max())
+    grads_output = norm_std(grads_output,scale=0.1)#grads_output/(4*np.abs(grads_output).max())+0.5
+    plt.imshow(grads_output)
+    plt.axis('off')
+    plt.show()
+    '''
     guided_grads_4 = GBP.pipe_line(input_img.cuda())
     guided_grads_4 = np.clip(guided_grads_4,0,guided_grads_4.max())
 
@@ -238,7 +247,7 @@ if __name__ == "__main__":
 
     to_show = np.concatenate([np.uint8(np.ones_like(grads_2) * 255), grads_2, grads_4], axis=1)
     save_original_images(to_show, to_folder, 'patch_rand_' + img_name.split('.')[0])
-    '''
+    
     plt.imshow(to_show)
     plt.axis('off')
     plt.show()

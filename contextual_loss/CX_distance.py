@@ -114,7 +114,8 @@ def CX_sim_dii(x, y, h=0.5):
   y_normalized = y_normalized.reshape(N, C, -1)                                # (N, C, H*W)
   cosine_sim = torch.bmm(x_normalized.transpose(1, 2), y_normalized)           # (N, H*W, H*W)
   
-  d = (1 - cosine_sim)/2                                 # (N, H*W, H*W)  d[n, i, j] means d_ij for n-th data 
+  d = (1 - cosine_sim)/2                                 # (N, H*W, H*W)  d[n, i, j] means d_ij for n-th data
+
   '''
   d_min = torch.zeros_like(d)
   for i in range(H*W):
@@ -123,19 +124,22 @@ def CX_sim_dii(x, y, h=0.5):
     d_i = d[~mask].reshape(N,H*W,H*W-1)
     d_min[:,:,i],_ = torch.min(d_i,dim=2)
   '''
+
   d_ii = torch.diagonal(d, offset=0,dim1=1,dim2=2)
 
   mask = ~torch.eye(H*W,dtype=bool)
   d_ij = d[:,mask].reshape(N,H*W,H*W-1)
+
   d_min,_ = torch.min(d_ij,dim=2)
 
   d_ii_tilde = d_ii / (d_min+1e-5)
   loss = torch.log(torch.mean(d_ii_tilde,dim=1)+1)
+
   
   return loss
 
 if __name__ == '__main__':
-   a = torch.randn(5,2,5,5)
+   a = torch.randn(5,16,1,1)
    b = a 
 
    print(CX_sim(a,b))
