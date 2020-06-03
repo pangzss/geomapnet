@@ -26,29 +26,32 @@ class Block(nn.Module):
 
 
         self.deconv1 = deconv3x3(in_planes,in_planes)
-        self.bn1 = nn.BatchNorm2d(in_planes)
+        self.bn1 = nn.InstanceNorm2d(in_planes)
         self.relu1 = nn.ReLU(inplace=False)
     
 
         # may need to upsample
         self.deconv2 = deconv3x3(in_planes,out_planes,stride = stride)
-        self.bn2 = nn.BatchNorm2d(out_planes)
+        self.bn2 = nn.InstanceNorm2d(out_planes)
         self.relu2 = nn.ReLU(inplace=False)
+        self.relu3 = nn.ReLU(inplace=False)
         # for downsampling the act map from the previous conv block (later deconv block)
         self.upsample = upsample
     def forward(self,x): # id_map
+        identity = x
 
         out = self.deconv1(x)
-        out = self.bn1(out)
+        #out = self.bn1(out)
         out = self.relu1(out)
 
         out = self.deconv2(out)
-        out= self.bn2(out)
+        #out= self.bn2(out)
         out = self.relu2(out)
 
         if self.upsample is not None:
-            out += self.upsample(x)
-
+            identity = self.upsample(x)
+        out += identity
+        out = self.relu3(out)
         return out
 
 class resizeConv_resnet(nn.Module):

@@ -127,7 +127,7 @@ class Cambridge(data.Dataset):
                 #style_stats = np.loadtxt(style_stats_path)
                 
                 #style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
-                embedding = torch.randn(1,1024)
+                embedding = torch.rand(1,1024)
                 embedding = torch.mm(embedding,self.A.transpose(1,0)) + self.mean
                 #embedding = np.random.multivariate_normal(self.mean, self.cov,1)
                 style_stats = embedding.view((2,512))

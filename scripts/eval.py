@@ -217,6 +217,7 @@ for batch_idx, (data, target) in enumerate(loader):
 
   # output : 1 x 6 or 1 x STEPS x 6
   _, output = step_feedfwd(data, model, CUDA, train=False)
+  s = output.size()
   if args.model == 'SLocNet':
     output = output[0]
     s = output.size()

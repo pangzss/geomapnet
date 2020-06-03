@@ -1,6 +1,6 @@
 
-python eval.py --dataset Cambridge --scene ShopFacade --model SLocNet \
+python eval.py --dataset Cambridge --scene ShopFacade --model posenet \
 --init_seed 0 \
---weights logs/Cambridge/Cambridge_ShopFacade_SLocNet_beta_gamma_sigma_seed0_version_4/epoch_145.pth.tar \
---config_file configs/cambridge_SLocNet.ini --val
+--weights logs/Cambridge/Cambridge_ShopFacade_MIN_beta_gamma_sigma_seed0/epoch_078.pth.tar \
+--config_file configs/cambridge_MIN.ini --val
 

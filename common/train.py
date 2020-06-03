@@ -25,6 +25,7 @@ from AdaIN.function import adaptive_instance_normalization
 
 from skimage.transform import resize
 from skimage import img_as_bool
+from torch.utils.tensorboard import SummaryWriter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 decoder = net.decoder
@@ -86,7 +87,7 @@ def safe_collate(batch):
 
 class Trainer(object):
   def __init__(self, model, optimizer, train_criterion, config_file, experiment,
-      train_dataset, val_dataset, device, dataset_name=None, seed=0, checkpoint_file=None, alpha=1.0,
+      train_dataset, val_dataset, device, optimizer_2=None, dataset_name=None, seed=0, checkpoint_file=None, alpha=1.0,
       resume_optim=False, val_criterion=None,visdom_server='http://localhost', visdom_port=8097):
     """
     General purpose training script
@@ -103,6 +104,7 @@ class Trainer(object):
     :param resume_optim: whether to resume optimization
     :param val_criterion: loss function to be used for validation
     """
+
     self.model = model
     self.train_criterion = train_criterion
     if val_criterion is None:
@@ -112,6 +114,7 @@ class Trainer(object):
     self.alpha = alpha
     self.experiment = experiment
     self.optimizer = optimizer
+    self.optimizer_2 = optimizer_2
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
       os.environ['CUDA_VISIBLE_DEVICES'] = device
     self.dataset_name = dataset_name
@@ -150,8 +153,10 @@ class Trainer(object):
     os.makedirs(self.logdir)
     copyfile(config_file, osp.join(self.logdir, 'config.ini'))
 
+    self.writer = SummaryWriter()
     if self.config['log_visdom']:
       # start plots
+
       self.vis_env = self.experiment
 
       self.training_loss_win = 'training_loss_win'
@@ -169,6 +174,11 @@ class Trainer(object):
       self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.lr_win,
         opts={'legend': ['learning_rate'], 'xlabel': 'epochs',
               'ylabel': 'log(lr)'}, env=self.vis_env)
+      self.p1_win = 'p1_win'
+      self.vis.stem(X=np.zeros(64), win=self.p1_win,
+                    opts={'title':'p_l1_b0', 'xlabel': 'channel',
+                          'ylabel': 'gate openness'}, env=self.vis_env)
+
       criterion_params = {k: v.data.cpu().numpy()[0] for k, v in
                           self.train_criterion.named_parameters()}
       self.n_criterion_params = len(criterion_params)
@@ -253,136 +263,6 @@ class Trainer(object):
        'criterion_state_dict': self.train_criterion.state_dict()}
     torch.save(checkpoint_dict, filename)
 
-  def train_val(self, lstm):
-    """
-    Function that does the training and validation
-    :param lstm: whether the model is an LSTM
-    :return: 
-    """
-    val_loss_list = []
-    for epoch in range(self.start_epoch, self.config['n_epochs']):
-      # VALIDATION
-
-      if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
-                                      (epoch == self.config['n_epochs']-1)) :
-        val_batch_time = Logger.AverageMeter()
-        val_loss = Logger.AverageMeter()
-        self.model.eval()
-        end = time.time()
-        val_data_time = Logger.AverageMeter()
-        for batch_idx, (data, target) in enumerate(self.val_loader):
-          val_data_time.update(time.time() - end)
-
-          kwargs = dict(target=target, criterion=self.val_criterion,
-            optim=self.optimizer, train=False)
-          if lstm:
-            loss, _ = step_lstm(data, self.model, self.config['cuda'], **kwargs)
-          else:
-            loss, _ = step_feedfwd(data, self.model, self.config['cuda'],
-              **kwargs)
-
-          val_loss.update(loss)
-
-
-          val_batch_time.update(time.time() - end)
-
-          if batch_idx % self.config['print_freq'] == 0:
-            print('Val {:s}: Epoch {:d}\t' \
-                  'Batch {:d}/{:d}\t' \
-                  'Data time {:.4f} ({:.4f})\t' \
-                  'Batch time {:.4f} ({:.4f})\t' \
-                  'Loss {:f}' \
-              .format(self.experiment, epoch, batch_idx, len(self.val_loader)-1,
-              val_data_time.val, val_data_time.avg, val_batch_time.val,
-              val_batch_time.avg, loss))
-            if self.config['log_visdom']:
-              self.vis.save(envs=[self.vis_env])
-
-          end = time.time()
-
-        print('Val {:s}: Epoch {:d}, val_loss {:f}'.format(self.experiment,
-          epoch, val_loss.avg))
-        val_loss_list.append(val_loss.avg)
-        if self.config['log_visdom']:
-          self.vis.line(X=np.asarray([epoch]),
-            Y=np.asarray([val_loss.avg]), win=self.val_loss_win, name='val_loss',
-            update='append', env=self.vis_env)
-          self.vis.save(envs=[self.vis_env])
-
-      # SAVE CHECKPOINT
-      if epoch % self.config['snapshot'] == 0:
-        if self.config['val_freq'] == self.config['snapshot']:
-          if val_loss_list[-1] < min(val_loss_list[:-1]):
-            self.save_checkpoint(epoch)
-            print('Epoch {:d} checkpoint saved for {:s}'.\
-               format(epoch, self.experiment))
-
-          elif epoch == self.config['n_epochs'] - 1:
-            self.save_checkpoint(epoch)
-            print('Epoch {:d} checkpoint saved for {:s}'.\
-              format(epoch, self.experiment))
-        else:
-          self.save_checkpoint(epoch)
-          print('Epoch {:d} checkpoint saved for {:s}'.\
-           format(epoch, self.experiment))
-
-      # ADJUST LR
-      lr = self.optimizer.adjust_lr(epoch)
-      if self.config['log_visdom']:
-        self.vis.line(X=np.asarray([epoch]), Y=np.asarray([np.log10(lr)]),
-          win=self.lr_win, name='learning_rate', update='append', env=self.vis_env)
-
-      # TRAIN
-      self.model.train()
-      train_data_time = Logger.AverageMeter()
-      train_batch_time = Logger.AverageMeter()
-      end = time.time()
-      for batch_idx, (data, target) in enumerate(self.train_loader):
-        train_data_time.update(time.time() - end)
-
-        kwargs = dict(target=target, criterion=self.train_criterion,
-          optim=self.optimizer, train=True,
-          max_grad_norm=self.config['max_grad_norm'])
-        if lstm:
-          loss, _ = step_lstm(data, self.model, self.config['cuda'], **kwargs)
-        else:
-          loss, _ = step_feedfwd(data, self.model, self.config['cuda'],
-            **kwargs)
-
-        train_batch_time.update(time.time() - end)
-
-        if batch_idx % self.config['print_freq'] == 0:
-          n_iter = epoch*len(self.train_loader) + batch_idx
-          epoch_count = float(n_iter)/len(self.train_loader)
-          print('Train {:s}: Epoch {:d}\t' \
-                'Batch {:d}/{:d}\t' \
-                'Data Time {:.4f} ({:.4f})\t' \
-                'Batch Time {:.4f} ({:.4f})\t' \
-                'Loss {:f}\t' \
-                'lr: {:f}'.\
-            format(self.experiment, epoch, batch_idx, len(self.train_loader)-1,
-            train_data_time.val, train_data_time.avg, train_batch_time.val,
-            train_batch_time.avg, loss, lr))
-          if self.config['log_visdom']:
-            self.vis.line(X=np.asarray([epoch_count]),
-              Y=np.asarray([loss]), win=self.training_loss_win, name='train_loss',
-              update='append', env=self.vis_env)
-            if self.n_criterion_params:
-              for name, v in self.train_criterion.named_parameters():
-                v = v.data.cpu().numpy()[0]
-                self.vis.line(X=np.asarray([epoch_count]), Y=np.asarray([v]),
-                                     win=self.criterion_param_win, name=name,
-                                     update='append', env=self.vis_env)
-            self.vis.save(envs=[self.vis_env])
-
-        end = time.time()
-
-    # Save final checkpoint
-    epoch = self.config['n_epochs']
-    self.save_checkpoint(epoch)
-    print('Epoch {:d} checkpoint saved'.format(epoch))
-    if self.config['log_visdom']:
-      self.vis.save(envs=[self.vis_env])
 
   def style_train_val(self,trinet=False):
       """
@@ -396,6 +276,7 @@ class Trainer(object):
       saved_list = []
       last_saved_pos = None
       last_saved_ori = None
+      n_iter = 0
       for epoch in range(self.start_epoch, self.config['n_epochs']+1):
         # VALIDATION
         if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
@@ -429,6 +310,9 @@ class Trainer(object):
           val_pos_list.append(val_median_pos)
           val_ori_list.append(val_median_ori)
 
+          self.writer.add_scalar('Val Loss/Val pos',val_median_pos,epoch)
+          self.writer.add_scalar('Val Loss/Val ori',val_median_ori,epoch)
+
           if self.config['log_visdom']:
             self.vis.line(X=np.asarray([epoch]),
               Y=np.asarray([val_median_pos]), win=self.val_loss_win, name='val_median_pos',
@@ -442,59 +326,65 @@ class Trainer(object):
 
 
          # SAVE CHECKPOINT
+
         if len(val_pos_list)>=2 and ((epoch % self.config['val_freq'] == 0) or
                                         (epoch == self.config['n_epochs']-1)):
-          # when val_freq == snapshot, it means that we want to save the model when finding a good val
-          # when val_freq != snapshot, usually we do val and the saving randomly, and only refer to the model at
-          # the final epoch as the peneulmate version. 
-          if self.config['val_freq'] == self.config['snapshot']:
-            curr_pos = val_pos_list[-1]
-            curr_ori = val_ori_list[-1]
-            #past_best_pos = min(val_pos_list[:-1])
-            #past_best_ori = min(val_ori_list[:-1])
 
-            #relative_pos_change = -(curr_pos - past_best_pos)/past_best_pos
-            #relative_ori_change = -(curr_ori - past_best_ori)/past_best_ori
+          curr_pos = val_pos_list[-1]
+          curr_ori = val_ori_list[-1]
+          #past_best_pos = min(val_pos_list[:-1])
+          #past_best_ori = min(val_ori_list[:-1])
 
-            if  last_saved_pos == None:
-              last_saved_pos = curr_pos
-              last_saved_ori = curr_ori
-            
-            last_pos_change = -(curr_pos - last_saved_pos)/last_saved_pos
-            last_ori_change = -(curr_ori - last_saved_ori)/last_saved_ori
-            #if (curr_pos < past_best_pos) and (curr_ori < past_best_ori):
-           # if (relative_pos_change + relative_ori_change > 0) or \
-            if (last_pos_change + last_ori_change) > 0:
-              
-              print(f'Validation loss decreased ({last_saved_pos:.6f} --> {curr_pos:.6f}) ({last_saved_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
-              self.save_checkpoint(epoch)
-             
-              last_saved_pos = curr_pos
-              last_saved_ori = curr_ori
-              saved_list.append(epoch)
+          #relative_pos_change = -(curr_pos - past_best_pos)/past_best_pos
+          #relative_ori_change = -(curr_ori - past_best_ori)/past_best_ori
 
-              
-              print('Epoch {:d} checkpoint saved for {:s}'.\
-                format(epoch, self.experiment))
-              if len(saved_list)>1:
-                os.remove(os.path.join(self.logdir,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
-                print('epoch_{}.pth.tar deleted.'.format(saved_list[0]))
-                del saved_list[0]
-              #early stop
-              if epoch > 300 and self.config['patience'] > 0:
-                early_stop_counter = 0
+          #if last_saved_pos is None:
+          #  last_saved_pos = curr_pos
+          #  last_saved_ori = curr_ori
 
-            elif epoch > 300 and self.config['patience'] > 0:
-              early_stop_counter += self.config['val_freq']
-              print('Early stop counter value: {}'.format(early_stop_counter))
-              if early_stop_counter == self.config['patience']:
-                print('Val error never decreases in {} epochs. Exit training.'.format(early_stop_counter))
-                sys.exit(-1)
+          last_pos_change = -(curr_pos - last_saved_pos)/last_saved_pos
+          last_ori_change = -(curr_ori - last_saved_ori)/last_saved_ori
+          #if (curr_pos < past_best_pos) and (curr_ori < past_best_ori):
+         # if (relative_pos_change + relative_ori_change > 0) or \
+          if (last_pos_change + last_ori_change) > 0:
 
-          elif epoch != 0 :
+            print(f'Validation loss decreased ({last_saved_pos:.6f} --> {curr_pos:.6f}) ({last_saved_ori:.6f} --> {curr_ori:.6f}). Zero counter and save model ...')
             self.save_checkpoint(epoch)
+
+            last_saved_pos = curr_pos
+            last_saved_ori = curr_ori
+            saved_list.append(epoch)
+
+
             print('Epoch {:d} checkpoint saved for {:s}'.\
-            format(epoch, self.experiment))
+              format(epoch, self.experiment))
+            #if len(saved_list)>1:
+            os.remove(os.path.join(self.logdir,'epoch_{:03d}.pth.tar'.format(saved_list[0])))
+            print('epoch_{}.pth.tar deleted.'.format(saved_list[0]))
+            del saved_list[0]
+            #early stop
+            #if epoch > 300 and self.config['patience'] > 0:
+            #  early_stop_counter = 0
+
+          #elif epoch > 300 and self.config['patience'] > 0:
+          #  early_stop_counter += self.config['val_freq']
+          #  print('Early stop counter value: {}'.format(early_stop_counter))
+          #  if early_stop_counter == self.config['patience']:
+          #    print('Val error never decreases in {} epochs. Exit training.'.format(early_stop_counter))
+          #    sys.exit(-1)
+          else:
+            print('老哥跑偏了')
+
+        elif epoch == 0:
+          self.save_checkpoint(epoch)
+          curr_pos = val_pos_list[-1]
+          curr_ori = val_ori_list[-1]
+          last_saved_pos = curr_pos
+          last_saved_ori = curr_ori
+
+          saved_list.append(epoch)
+          print('Epoch {:d} checkpoint saved for {:s}'.\
+          format(epoch, self.experiment))
 
         # ADJUST LR
   
@@ -510,6 +400,7 @@ class Trainer(object):
           train_batch_time = Logger.AverageMeter()
           end = time.time()
           for batch_idx, (data, target) in enumerate(self.train_loader):
+            n_iter += 1
             train_data_time.update(time.time() - end)
             # update batch
             data_shape = data[0].shape
@@ -575,7 +466,7 @@ class Trainer(object):
 
         
             end = time.time()
-            loss, _ = step_feedfwd(real, self.model, self.config['cuda'],trinet=trinet,
+            loss, _ = step_feedfwd(real, self.model, self.config['cuda'],trinet=trinet,optim_2 = self.optimizer_2,
               **kwargs)
             
             train_batch_time.update(time.time() - end)
@@ -598,6 +489,14 @@ class Trainer(object):
                 loss.triplet_loss.item(),loss.perceptual_loss.item(),(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item(),
                 loss.final_loss.item(), lr))
 
+              self.writer.add_scalar('Train Loss/total loss',loss.final_loss.item(),n_iter)
+              self.writer.add_scalar('Train Loss/pose loss',(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item(),n_iter)
+              self.writer.add_scalar('Train Loss/triplet loss',loss.triplet_loss.item(),n_iter)
+              params = {}
+              for name, v in self.train_criterion.named_parameters():
+                params[name] =  v.data.cpu().numpy()[0]
+              self.writer.add_scalars('criterion_params',params,n_iter)
+
               if self.config['log_visdom']:
                 self.vis.line(X=np.asarray([epoch_count]),
                   Y=np.asarray([loss.final_loss.item()]), win=self.training_loss_win, name='total_loss',
@@ -611,6 +510,8 @@ class Trainer(object):
                 self.vis.line(X=np.asarray([epoch_count]),
                   Y=np.asarray([(loss.abs_loss[0]+loss.abs_loss[1]+loss.vo_loss).item()]), win=self.training_loss_win, name='pose_loss',
                   update='append', env=self.vis_env)
+                self.vis.stem(X= self.model._modules['mapnet']._modules['feature_extractor']._modules['layer1'][0].p1.view(-1),
+                              win=self.p1_win, env=self.vis_env)
                 if self.n_criterion_params:
                   for name, v in self.train_criterion.named_parameters():
                     v = v.data.cpu().numpy()[0]
@@ -620,6 +521,19 @@ class Trainer(object):
                 self.vis.save(envs=[self.vis_env])
 
             end = time.time()
+
+        self.writer.add_histogram('gate values/layer 1, block 0',
+                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer1'][0].p1.view(-1),epoch)
+        self.writer.add_histogram('gate values/layer 2, block 0',
+                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer2'][0].p1.view(-1),
+                      epoch)
+        self.writer.add_histogram('gate values/layer 3, block 0',
+                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer3'][0].p1.view(-1),
+                      epoch)
+        self.writer.add_histogram('gate values/layer 4, block 0',
+                             self.model._modules['mapnet']._modules['feature_extractor']._modules['layer4'][0].p1.view(
+                               -1),epoch)
+      self.writer.close()
       # Save final checkpoint
       epoch = self.config['n_epochs']
       self.save_checkpoint(epoch)
@@ -627,7 +541,7 @@ class Trainer(object):
       if self.config['log_visdom']:
         self.vis.save(envs=[self.vis_env])
 
-def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
+def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,optim_2=None,
     train=True, max_grad_norm=0.0,trinet=False):
       """
       training/validation step for a feedforward NN
@@ -667,11 +581,15 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
         if train:
           # SGD step
           optim.learner.zero_grad()
+          if optim_2 is not None:
+            optim_2.zero_grad()
           loss.final_loss.backward()
           if max_grad_norm > 0.0:
             torch.nn.utils.clip_grad_norm(model.parameters(), max_grad_norm)
           optim.learner.step()
-        
+          optim_2.step()
+
+
         return loss, output
       else:
         return 0, output
@@ -731,6 +649,7 @@ def step_lstm(data, model, cuda, target=None, criterion=None, optim=None,
         if train:
           # SGD step
           optim.learner.zero_grad()
+
           loss.backward()
           optim.learner.step()
 

@@ -12,8 +12,9 @@ from common.train_SLocNet import Trainer as Trainer_SLocNet
 from common.optimizer import Optimizer
 from common.criterion import PoseNetCriterion, MapNetCriterion,\
   MapNetOnlineCriterion, TripletCriterion, SLocNetCriterion
-from models.posenet import PoseNet, MapNet, TriNet, StripNet,SLocNet
+from models.posenet import PoseNet, MapNet, TriNet, StripNet,SLocNet, MIN
 from models.resizeConv_resnet import resizeConv_resnet
+from models.ModifiedResnet34 import resnet34 as ModifiedResNet34
 from dataset_loaders.composite import MF, MFOnline
 import os.path as osp
 import numpy as np
@@ -24,6 +25,8 @@ import torch
 from torch import nn
 from torchvision import transforms, models
 import random
+import torch.optim as optim
+
 parser = argparse.ArgumentParser(description='Training script for PoseNet and'
                                              'MapNet variants')
 parser.add_argument('--dataset', type=str, choices=('7Scenes', 'RobotCar','AachenDayNight','Cambridge'),
@@ -36,7 +39,7 @@ parser.add_argument('--mask', action='store_true')
 #parser.add_argument('--num_styles', type=int, help='number of styles')
 parser.add_argument('--t_aug', action='store_true', help='use traditional augmentation')
 parser.add_argument('--config_file', type=str, help='configuration file')
-parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet','stripnet','SLocNet'),
+parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet','stripnet','SLocNet','MIN'),
   help='Model to train')
 parser.add_argument('--device', type=str, default='0',
   help='value to be set to $CUDA_VISIBLE_DEVICES')
@@ -76,7 +79,7 @@ sp = section.getfloat('sigma_pc',0.0)
 sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
 train_split = section.getint('train_split', 6)
-if args.model.find('mapnet') >= 0 or args.model=='trinet' or args.model == 'stripnet' or args.model == 'SLocNet':
+if args.model.find('mapnet') >= 0 or args.model=='trinet' or args.model == 'stripnet' or args.model == 'SLocNet' or args.model == 'MIN':
   skip = section.getint('skip')
   real = section.getboolean('real')
   variable_skip = section.getboolean('variable_skip')
@@ -99,7 +102,10 @@ if seed >= 0:
   torch.backends.cudnn.benchmark = False
 
 # model
-feature_extractor = models.resnet34(pretrained=True)
+#if args.model != 'MIN':
+#feature_extractor = models.resnet34(pretrained=True)
+#else:
+feature_extractor = ModifiedResNet34(pretrained=True)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=True,
                   filter_nans=(args.model=='mapnet++'))
 
@@ -114,6 +120,8 @@ elif args.model == 'stripnet':
 elif args.model == 'SLocNet':
   decoder = resizeConv_resnet()
   model = SLocNet(mapnet=posenet,decoder=decoder)
+elif args.model == 'MIN':
+  model = MIN(mapnet=posenet)
 else:
   raise NotImplementedError
 
@@ -148,11 +156,25 @@ elif args.model == 'SLocNet':
                 learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
   train_criterion = SLocNetCriterion(**kwargs)
   val_criterion = SLocNetCriterion()
+elif args.model == 'MIN':
+  kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq, sc=sc, sp=sp,learn_beta=args.learn_beta,
+                learn_gamma=args.learn_gamma, learn_sigma=args.learn_sigma)
+  train_criterion = TripletCriterion(**kwargs)
+  val_criterion = TripletCriterion()
 else:
   raise NotImplementedError
 
 # optimizer
 param_list = [{'params': model.parameters()}]
+
+param_list_2 = []
+num_blocks = [3,4,6,3]
+for layer in range(1,5):
+    for block in range(num_blocks[layer-1]):
+      module = model._modules['mapnet']._modules['feature_extractor']._modules['layer'+str(layer)][block]
+      param_list_2.append({'params': [module.p1,module.p2]})
+optimizer_2 = optim.SGD(param_list_2, lr=0.05)
+
 if args.learn_beta and hasattr(train_criterion, 'sax') and \
     hasattr(train_criterion, 'saq'):
   param_list.append({'params': [train_criterion.sax, train_criterion.saq]})
@@ -262,6 +284,12 @@ elif args.model == 'SLocNet':
     kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
     train_set = CambridgeSLocNet(train=True, **kwargs)
     val_set = CambridgeSLocNet(train=False, **val_kwargs)
+elif args.model == 'MIN':
+  if args.dataset == 'Cambridge':
+    from dataset_loaders.cambridge_MIN import CambridgeMIN
+    kwargs = dict(kwargs, real_prob=args.real_prob, style_dir = args.style_dir)
+    train_set = CambridgeMIN(train=True, **kwargs)
+    val_set = CambridgeMIN(train=False, **val_kwargs)
 else:
   raise NotImplementedError
 
@@ -294,11 +322,11 @@ experiment_name += args.suffix
 if args.model != 'SLocNet':
 
   trainer = Trainer(model, optimizer, train_criterion, args.config_file,
-                    experiment_name, train_set, val_set, dataset_name=args.dataset,seed=seed, alpha=args.alpha,device=args.device,
+                    experiment_name, train_set, val_set, optimizer_2=optimizer_2, dataset_name=args.dataset,seed=seed, alpha=args.alpha,device=args.device,
                     checkpoint_file=args.checkpoint,
                     resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
   lstm = args.model == 'vidloc'
-  trinet = args.model == 'trinet'
+  trinet = (args.model == 'trinet') or (args.model == 'MIN')
   if args.dataset == 'AachenDayNight' or args.dataset =='Cambridge':
     trainer.style_train_val(trinet=trinet)
   else:

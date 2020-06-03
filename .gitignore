@@ -237,8 +237,10 @@ tags
 #custom
 data
 scripts/logs
+scripts/runs
 scripts/scripts
 visual/figs
+
 AdaIN
 visual/imgs
 # End of https://www.gitignore.io/api/vim,linux,python,pycharm

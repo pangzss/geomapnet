@@ -349,27 +349,33 @@ class SLocNet(nn.Module):
               G = torch.bmm(stacked, stacked.transpose(1, 2))
               G.div_(h * w)
               return G
+           if layer != 4:
+             s_mean, s_std = self.calc_mean_std(self.style_feats[layer][block])
+             t_mean, t_std = self.calc_mean_std(output)
+             s_embedding = torch.cat([s_mean, s_std], dim=1)
+             t_embedding = torch.cat([t_mean, t_std], dim=1)
+
            if layer == 4 and block == 2:
              s = self.feats.size()
              self.feats = self.feats.reshape(-1,3,s[-3],s[-2],s[-1])
              self.feats = torch.cat([self.feats,output[:,None]],dim=1)
 
            elif layer == 3 and block == 3:
-             self.style_loss_4 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
+             #self.style_loss_4 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
+             self.style_loss_4 = self.mse(s_embedding,t_embedding)
              self.content_loss = self.mse(output, self.stylized)
            else:
 
              if layer == 1:
-               #s_mean, s_std = self.calc_mean_std(self.style_feats[layer])
-               #t_mean, t_std = self.calc_mean_std(output)
-               #s_embedding = torch.cat([s_mean, s_std], dim=1)
-               #t_embedding = torch.cat([t_mean, t_std], dim=1)
-               self.style_loss_1 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
+               self.style_loss_1 = self.mse(s_embedding, t_embedding)
+               #self.style_loss_1 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
                #self.style_loss_1 = self.mse(GramMatrix(self.style_feats[layer]), GramMatrix(output))
              elif layer == 2 and block == 0:
-               self.style_loss_2 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
+               self.style_loss_2 = self.mse(s_embedding, t_embedding)
+               #self.style_loss_2 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
              else:
-               self.style_loss_3 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
+               self.style_loss_3 = self.mse(s_embedding, t_embedding)
+               #self.style_loss_3 = self.mse(GramMatrix(self.style_feats[layer][block]), GramMatrix(output))
         else:
           NotImplementedError
 
@@ -409,13 +415,60 @@ class SLocNet(nn.Module):
 
       poses = torch.cat([poses,pose_t],dim=1)
 
-      return poses, [self.feats,self.content_loss, self.style_loss_1+self.style_loss_2+self.style_loss_3]
+      return poses, [self.feats,self.content_loss, self.style_loss_1+self.style_loss_2+self.style_loss_3+self.style_loss_4]
     else:
       x = x.view(-1, *s[1:])
       poses = self.mapnet(x)
 
 
       return poses,[None,0,0]
+
+
+class MIN(nn.Module):
+  """
+  Implements the MapNet model (green block in Fig. 2 of paper)
+  """
+
+  def __init__(self, mapnet, layer=4, block=2):
+    """
+    :param mapnet: the MapNet (two CNN blocks inside the green block in Fig. 2
+    of paper). Not to be confused with MapNet, the model!
+    """
+    super(MIN, self).__init__()
+    self.mapnet = mapnet
+    self.feats = None
+    self.selected_layer = layer
+    self.selected_block = block
+    self.hook_layer_forward()
+
+  def hook_layer_forward(self):
+    def hook_function(module, input, output):
+      self.feats = output
+
+    # Hook the selected layer
+    self.mapnet._modules['feature_extractor']._modules['layer' + str(self.selected_layer)][
+      self.selected_block]._modules['conv2'].register_forward_hook(hook_function)
+
+  def forward(self, x):
+    """
+    :param x: image blob (N x T x C x H x W)
+    :return: pose outputs
+     (N x T x 6)
+    """
+
+    s = x.size()
+
+    if len(s) == 5:
+      x = x.view(-1, *s[2:])
+      poses = self.mapnet(x)
+      poses = poses.view(s[0], 3, -1)
+      self.feats = self.feats.view(s[0], s[1], self.feats.shape[-3], self.feats.shape[-2], self.feats.shape[-1])
+    else:
+      x = x.view(-1, *s[1:])
+      poses = self.mapnet(x)
+      self.feats = None
+
+    return poses, self.feats
 
 if __name__ == '__main__':
   from torchvision import models
