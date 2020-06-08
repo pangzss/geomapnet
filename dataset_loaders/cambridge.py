@@ -6,7 +6,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from torchvision.utils import make_grid
 import numpy as np
-from common.pose_utils import process_poses_quaternion
+from common.pose_utils import process_poses_quaternion,qexp_t,qlog_t
 from common.vis_utils import show_batch, show_stereo_batch
 import transforms3d.quaternions as txq
 import os
@@ -44,7 +44,7 @@ class Cambridge(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.mask = mask
-        print(self.mask)
+
         #
         self.real_prob = real_prob
         if self.real_prob != 100:
@@ -54,7 +54,12 @@ class Cambridge(data.Dataset):
             u, s, vh = np.linalg.svd(self.cov)
             self.A = np.matmul(u,np.diag(s**0.5))
             self.A = torch.tensor(self.A).float()
-        
+            '''
+            self.embedding = []
+            for i in range(4):
+                embedding = torch.rand(1, 1024)  # torch.rand(1,1024)
+                self.embedding.append(torch.mm(embedding, self.A.transpose(1, 0)) + self.mean)
+            '''
         #self.style_dir = style_dir+'_stats_'+scene if self.train else None
         #self.available_styles = os.listdir(self.style_dir) if self.style_dir is not None else None
         #print('real_prob: {}.\nstyle_dir: {}\nnum_styles: {}'.format(self.real_prob,self.style_dir,len(self.available_styles) \
@@ -74,6 +79,7 @@ class Cambridge(data.Dataset):
         for l in lines[3:]:
             ls = l.split(' ')
             pose = [float(x) for x in ls[1:]]
+
             p = camerapoint(position = pose[:3], rotation = pose[3:], img_path=ls[0])
             self.points.append(p)
         print('Loaded %d points'%len(self.points))
@@ -97,6 +103,7 @@ class Cambridge(data.Dataset):
             pose = process_poses_quaternion(np.asarray([p.position]), np.asarray([p.rotation]), mean_t, std_t, np.eye(3), np.zeros(3), np.ones(1))
             p.set_pose(pose.flatten())
 
+
             
     def __getitem__(self, index):
         img = None
@@ -106,9 +113,10 @@ class Cambridge(data.Dataset):
             pose = point.pose
             index += 1
         index -= 1
-        
+
         if self.target_transform is not None:
-            pose = self.target_transform(pose) 
+            pose = self.target_transform(pose)
+
         if self.mask:
             path = point.img_path.split('/')
             
@@ -127,30 +135,23 @@ class Cambridge(data.Dataset):
                 #style_stats = np.loadtxt(style_stats_path)
                 
                 #style_stats = torch.tensor(style_stats,dtype=torch.float) # 2*512
-                embedding = torch.rand(1,1024)
-                embedding = torch.mm(embedding,self.A.transpose(1,0)) + self.mean
-                #embedding = np.random.multivariate_normal(self.mean, self.cov,1)
-                style_stats = embedding.view((2,512))
-            '''
-            ## stylization
-            t_list = [t for t in self.transform.__dict__['transforms'] if isinstance(t,transforms.Resize) \
-                                                                        or isinstance(t,transforms.CenterCrop) \
-                                                                        or isinstance(t,transforms.ToTensor) \
-                                                                        or isinstance(t,transforms.Normalize)]
-            '''
-            img_t = self.transform(img)
 
-            '''
-            style_t = style
-           
-            for t in t_list:
-        
-                if isinstance(t,transforms.Resize):
-                    Resize = transforms.Resize(img_t.shape[-2:])
-                    style_t = Resize(style_t)
-                    continue
-                style_t = t(style_t)
-            '''
+                embedding = torch.randn(1,1024)
+                embedding = torch.mm(embedding,self.A.transpose(1,0)) + self.mean
+                #style_idx = np.random.choice(len(self.embedding), 1)
+                style_stats = embedding.view((2,512))
+
+            img_t = self.transform(img)
+            pose[:3] = pose[:3] + (0.5*torch.eye(3)@torch.randn(3,1)).view(-1)
+
+            #theta = 0.5*np.pi*np.random.randn(1)/180.
+            #q_noise = txq.axangle2quat([1,1,1], theta)
+            #q_raw = qexp_t(pose[3:][None,...])
+            #q_new = torch.tensor(txq.qmult(q_noise, q_raw[0].numpy()))
+            #q_new *= np.sign(q_new[0])  # constrain to hemisphere
+            #q_new = qlog_t(q_new[None,...])
+            #pose[3:] = q_new[0]
+
             if self.mask:
                 return (img_t,style_stats,torch.ones(1),mask),pose
             else:
@@ -191,13 +192,13 @@ def main():
     num_workers = 0
     transform = transforms.Compose([
     transforms.Resize(256),
-    transforms.ColorJitter(brightness=0.7,
-                               contrast=0.7, saturation=0.7, hue=0.5),
+    #transforms.ColorJitter(brightness=0.7,
+    #                           contrast=0.7, saturation=0.7, hue=0.5)
     #transforms.CenterCrop(224),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
       std=[0.229, 0.224, 0.225])])
-
+    target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
     inv_normalize = transforms.Normalize(
      mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
     std=[1/0.229, 1/0.224, 1/0.225]
@@ -206,23 +207,24 @@ def main():
     data_path = '../data/deepslam_data/Cambridge'
     scene = 'ShopFacade'
     train = True
-    dset = Cambridge(data_path, train,scene=scene,transform=transform,real_prob=100,style_dir='pbn_test_embedding_dist.txt')
+    dset = Cambridge(data_path, train,scene=scene,transform=transform,target_transform=target_transform,
+                     real_prob=0,style_dir='pbn_test_embedding_dist.txt')
     print('Loaded Cambridge training data, length = {:d}'.format(
     len(dset)))
-    data_loader = data.DataLoader(dset, batch_size=4, shuffle=True,
+    data_loader = data.DataLoader(dset, batch_size=1, shuffle=True,
     num_workers=num_workers)
     batch_count = 0
     N_batches = 10
     for batch in data_loader:
         real = batch[0][0]
-        print(real.shape)
         style_stats = batch[0][1]
         style_indc = batch[0][2].squeeze(1)
-
-        
+        data_shape = real[0].shape
+        to_shape = (-1, data_shape[-3], data_shape[-2], data_shape[-1])
+        real = real.reshape(to_shape)
         if sum(style_indc == 1) > 0:
             with torch.no_grad():
-                alpha = 0.5
+                alpha = 1.0
                 assert (0.0 <= alpha <= 1.0)
                 content_f = vgg(real[style_indc == 1].cuda())
                 style_f_stats = style_stats[style_indc == 1].unsqueeze(-1).unsqueeze(-1).cuda()
@@ -230,7 +232,7 @@ def main():
                 feat = adaptive_instance_normalization(content_f, style_f_stats,style_stats=True)
                 feat = feat * alpha + content_f * (1 - alpha)
                 stylized = decoder(feat)
-                real[style_indc == 1] = stylized.cpu()
+                real[style_indc == 1] = stylized.cpu()[...,:real.shape[-2],:real.shape[-1]]
             
 
         show_batch(make_grid(real, nrow=5, padding=5, normalize=True))

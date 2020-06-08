@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.hub import load_state_dict_from_url
-
-
+from torch.nn import functional as F
+from .BatchInstanceNorm import BatchInstanceNorm2d
+from .SwitchWhitening2d import SwitchWhiten2d
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
            'wide_resnet50_2', 'wide_resnet101_2']
@@ -37,7 +38,7 @@ class BasicBlock(nn.Module):
     __constants__ = ['downsample']
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
+                 base_width=64, dilation=1, norm_layer=None,BIN=False):
         super(BasicBlock, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -48,20 +49,27 @@ class BasicBlock(nn.Module):
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.planes = planes
         self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = norm_layer(planes)
+        self.BIN = BIN
+        if self.BIN:
+            #self.bn1 = BatchInstanceNorm2d(planes)
+            self.bn1 = BatchInstanceNorm2d(planes)
+        else:
+            self.bn1 = norm_layer(planes)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes)
-        self.bn2 = norm_layer(planes)
+        if self.BIN:
+            self.bn2 = BatchInstanceNorm2d(planes)
+        else:
+            self.bn2 = norm_layer(planes)
         self.downsample = downsample
         self.stride = stride
-        self.p1 = torch.ones(1, planes, 1, 1).cuda()
-        self.p2 = torch.ones(1, planes, 1, 1).cuda()
-        self.p1.requires_grad = True
-        self.p2.requires_grad = True
-        #self.p1 = torch.ones(1,1,planes,1,1).cuda()
-        #self.p2 = torch.ones(1,1,planes,1,1).cuda()
-        #self.p1.requires_grad = True
-        #self.p2.requires_grad = True
+
+        #if self.BIN :
+        #    self.p = torch.ones(planes).cuda()
+        #    #self.p_std = torch.ones(1, planes, 1, 1).cuda()
+        #    self.p.requires_grad = True
+        #    #self.p_std.requires_grad = True
+
 
     def calc_mean_std(self, feat, eps=1e-5):
         # eps is a small value added to the variance to avoid divide-by-zero.
@@ -103,103 +111,51 @@ class BasicBlock(nn.Module):
 
         return integrated_feats
 
-    def StyleIntegrationConv2(self, x):
-        self.p2.data.clamp_(0.,1.)
 
-        size_x = x.size()
+    def BatchInstanceNorm2d(self, x, eps=1e-5):
 
-        means, stds = self.calc_mean_std(x,
-                                         eps=1e-5)  # (4xN)xCX1X1                                                        
-
-        means = means.reshape(-1, 4, size_x[1], 1,
-                              1)  # Nx4xCx1x1                                                          
-        stds = stds.reshape(-1, 4, size_x[1], 1,
-                            1)  # Nx4xCx1x1                                                          
-        c_means = means[:, :3]  # Nx3xCx1x1                                                               
-        c_stds = stds[:, :3]  # Nx3xCx1x1                                                               
-        size_stats = c_means.size()
-
-        s_means = means[:, 3][:, None].expand(
-            size_stats)  # Nx1XCx1x1 --expand--> Nx3xCx1x1                                             
-        s_stds = stds[:, 3][:, None].expand(
-            size_stats)  # Nx1XCx1x1 --expand--> Nx3xCx1x1                                            
-
-        x = x.reshape(-1, 4, size_x[-3], size_x[-2],
-                      size_x[-1])  # Nx4xCxHxW                                                                  
-        c = x[:, :3]  # Nx3xCxHxW                                                                                 
-        s = x[:, 3][:,
-            None]  # Nx1xCxHxW                                                                                 
-        size_feats = c.size()
-        weighted_means = self.p2.expand(size_stats) * c_means + (
-                    torch.ones_like(c_means) - self.p2.expand(size_stats)) * s_means  # Nx3xCx1x1   
-        weighted_stds = self.p2.expand(size_stats) * c_stds + (
-                    torch.ones_like(c_stds) - self.p2.expand(size_stats)) * s_stds  # Nx3xCx1x1    
-
-        normalized_feats = (c - c_means.expand(size_feats)) / c_stds.expand(
-            size_feats)  # Nx3xCxHxW                                           
-        integrated_feats = normalized_feats * weighted_stds.expand(size_feats) + weighted_means.expand(
-            size_feats)  # Nx3xCxHxW
-        integrated_feats = torch.cat([integrated_feats, s], dim=1).reshape(size_x)
-
-        return integrated_feats
-
-    def BIN1(self, x, eps=1e-5):
-
-        self.p1.data.clamp_(0., 1., )
-
+        self.p.data.clamp_(0., 1., )
         size_x = x.size()
 
         # batch norm
-        batch_mean = torch.mean(x, dim=(0, 2, 3))
-        batch_std = torch.sqrt(torch.mean((x - batch_mean.reshape(1, size_x[1], 1, 1)) ** 2, dim=(0, 2, 3)))
-        x_hat_batch = (x - batch_mean.reshape((1, size_x[1], 1, 1))) / (batch_std.reshape(1, size_x[1], 1, 1) + eps)
+        #batch_mean = torch.mean(x, dim=(0, 2, 3))
+        #batch_std = torch.sqrt(torch.mean((x - batch_mean.reshape(1, size_x[1], 1, 1)) ** 2, dim=(0, 2, 3)))
+        #x_hat_batch = (x - batch_mean.reshape((1, size_x[1], 1, 1))) / (batch_std.reshape(1, size_x[1], 1, 1) + eps)
+        x_hat_batch= F.batch_norm(
+            x, self.bn1.running_mean, self.bn1.running_var,
+            self.bn1.weight*self.p, self.bn1.bias,
+            self.bn1.training, self.bn1.momentum, self.bn1.eps)
+        # Instance norm
+        b, c = size_x[0], size_x[1]
 
+        in_w = self.bn1.weight * (1 - self.gate)
+
+        input = input.view(1, b * c, *input.size()[2:])
+        out_in = F.batch_norm(
+            input, None, None, None, None,
+            True, self.momentum, self.eps)
+        out_in = out_in.view(b, c, *input.size()[2:])
+        out_in.mul_(in_w[None, :, None, None])
         # instance norm
         instance_mean,instance_std = self.calc_mean_std(x)
         x_hat_instance = (x - instance_mean.expand(size_x)) / (instance_std.expand(size_x) + eps)
 
         # BIN
-        y = self.p1*x_hat_batch + (torch.ones_like(self.p1)-self.p1)*x_hat_instance
+        y = self.p*x_hat_batch + (torch.ones_like(self.p)-self.p)*x_hat_instance
         #y = self.bn1.weight.reshape(1,size_x[1],1,1) * y + self.bn1.bias.reshape(1,size_x[1],1,1)
         return self.bn1.weight.reshape(1,size_x[1],1,1) * y + self.bn1.bias.reshape(1,size_x[1],1,1)
 
-    def BIN2(self, x, eps=1e-5):
-
-        self.p2.data.clamp_(0., 1., )
-
-        size_x = x.size()
-
-        # batch norm
-        batch_mean = torch.mean(x, dim=(0, 2, 3))
-        batch_std = torch.sqrt(torch.mean((x - batch_mean.reshape(1, size_x[1], 1, 1)) ** 2, dim=(0, 2, 3)))
-        x_hat_batch = (x - batch_mean.reshape((1, size_x[1], 1, 1))) / (batch_std.reshape(1, size_x[1], 1, 1) + eps)
-
-        # instance norm
-        instance_mean, instance_std = self.calc_mean_std(x)
-        x_hat_instance = (x - instance_mean.expand(size_x)) / (instance_std.expand(size_x) + eps)
-
-        # BIN
-        y = self.p2 * x_hat_batch + (torch.ones_like(self.p2) - self.p2) * x_hat_instance
-        #y = self.bn2.weight.reshape(1, size_x[1], 1, 1) * y + self.bn2.bias.reshape(1, size_x[1], 1, 1)
-        return self.bn2.weight.reshape(1, size_x[1], 1, 1) * y + self.bn2.bias.reshape(1, size_x[1], 1, 1)
-
     def forward(self, x):
 
-        s = x.size()
         identity = x
 
         out = self.conv1(x)
-        if s[0] != 1:
-            out = self.BIN1(out)
-        else:
-            out = self.bn1(out)
+        out = self.bn1(out)
         out = self.relu(out)
 
         out = self.conv2(out)
-        if s[0] != 1:
-            out = self.BIN2(out)
-        else:
-            out = self.bn2(out)
+
+        out = self.bn2(out)
         if self.downsample is not None:
             identity = self.downsample(x)
 
@@ -231,16 +187,16 @@ class ResNet(nn.Module):
         self.base_width = width_per_group
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
-        self.bn1 = norm_layer(self.inplanes)
+        self.bn1 = BatchInstanceNorm2d(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer1 = self._make_layer(block, 64, layers[0],BIN=True)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
-                                       dilate=replace_stride_with_dilation[0])
+                                       dilate=replace_stride_with_dilation[0],BIN=True)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
-                                       dilate=replace_stride_with_dilation[1])
+                                       dilate=replace_stride_with_dilation[1],BIN=True)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
-                                       dilate=replace_stride_with_dilation[2])
+                                       dilate=replace_stride_with_dilation[2],BIN=False)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
@@ -261,7 +217,7 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False, BIN=False):
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
@@ -276,12 +232,12 @@ class ResNet(nn.Module):
 
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer))
+                            self.base_width, previous_dilation, norm_layer,BIN=False))
         self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
+        for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups=self.groups,
                                 base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer))
+                                norm_layer=norm_layer,BIN=BIN if (i % 2 == 1) else False))
 
         return nn.Sequential(*layers)
 
@@ -336,7 +292,9 @@ def resnet34(pretrained=False, progress=True, **kwargs):
 
 if __name__ == '__main__':
     model = resnet34(pretrained=False)
-    num_blocks = [3,4,6,3]
-    for layer in range(1,5):
-        for block in range(num_blocks[layer-1]):
-            print(model._modules['layer'+str(layer)][block].p2.shape)
+    for name,p in model.named_parameters():
+        print(name)
+    #num_blocks = [3,4,6,3]
+    #for layer in range(1,5):
+    #    for block in range(num_blocks[layer-1]):
+    #        print(model._modules['layer'+str(layer)][block].p2.shape)

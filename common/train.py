@@ -87,7 +87,7 @@ def safe_collate(batch):
 
 class Trainer(object):
   def __init__(self, model, optimizer, train_criterion, config_file, experiment,
-      train_dataset, val_dataset, device, optimizer_2=None, dataset_name=None, seed=0, checkpoint_file=None, alpha=1.0,
+      train_dataset, val_dataset, device, dataset_name=None, seed=0, checkpoint_file=None, alpha=1.0,
       resume_optim=False, val_criterion=None,visdom_server='http://localhost', visdom_port=8097):
     """
     General purpose training script
@@ -106,6 +106,7 @@ class Trainer(object):
     """
 
     self.model = model
+
     self.train_criterion = train_criterion
     if val_criterion is None:
       self.val_criterion = self.train_criterion
@@ -114,7 +115,6 @@ class Trainer(object):
     self.alpha = alpha
     self.experiment = experiment
     self.optimizer = optimizer
-    self.optimizer_2 = optimizer_2
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
       os.environ['CUDA_VISIBLE_DEVICES'] = device
     self.dataset_name = dataset_name
@@ -153,7 +153,7 @@ class Trainer(object):
     os.makedirs(self.logdir)
     copyfile(config_file, osp.join(self.logdir, 'config.ini'))
 
-    self.writer = SummaryWriter()
+    self.writer = SummaryWriter('runs/'+self.experiment)
     if self.config['log_visdom']:
       # start plots
 
@@ -277,6 +277,7 @@ class Trainer(object):
       last_saved_pos = None
       last_saved_ori = None
       n_iter = 0
+      lr2 = None
       for epoch in range(self.start_epoch, self.config['n_epochs']+1):
         # VALIDATION
         if self.config['do_val'] and ((epoch % self.config['val_freq'] == 0) or
@@ -375,7 +376,7 @@ class Trainer(object):
           else:
             print('老哥跑偏了')
 
-        elif epoch == 0:
+        elif len(saved_list) == 0:
           self.save_checkpoint(epoch)
           curr_pos = val_pos_list[-1]
           curr_ori = val_ori_list[-1]
@@ -387,12 +388,18 @@ class Trainer(object):
           format(epoch, self.experiment))
 
         # ADJUST LR
-  
+
         lr = self.optimizer.adjust_lr(epoch)
         if self.config['log_visdom']:
           self.vis.line(X=np.asarray([epoch]), Y=np.asarray([np.log10(lr)]),
             win=self.lr_win, name='learning_rate', update='append', env=self.vis_env)
 
+        '''
+        if epoch % 100 == 0:
+          if len(self.optimizer.learner.param_groups[1]['params']) != 0:
+            self.optimizer.learner.param_groups[1]['lr'] *= 0.5 if epoch != 0 else 1.
+            lr2 = self.optimizer.learner.param_groups[1]['lr']
+        '''
         if epoch < self.config['n_epochs']:
           # TRAIN
           self.model.train()
@@ -466,7 +473,7 @@ class Trainer(object):
 
         
             end = time.time()
-            loss, _ = step_feedfwd(real, self.model, self.config['cuda'],trinet=trinet,optim_2 = self.optimizer_2,
+            loss, _ = step_feedfwd(real, self.model, self.config['cuda'],trinet=trinet,
               **kwargs)
             
             train_batch_time.update(time.time() - end)
@@ -521,19 +528,25 @@ class Trainer(object):
                 self.vis.save(envs=[self.vis_env])
 
             end = time.time()
-
-        self.writer.add_histogram('gate values/layer 1, block 0',
-                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer1'][0].p1.view(-1),epoch)
-        self.writer.add_histogram('gate values/layer 2, block 0',
-                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer2'][0].p1.view(-1),
+        '''
+        if lr2 is not None:
+          self.writer.add_scalar('learning rate',lr2,epoch)
+        self.writer.add_histogram('gate values/bn1',
+                      self.model._modules['mapnet']._modules['feature_extractor']._modules['bn1'].gate.view(-1),epoch)
+        self.writer.add_histogram('gate values/layer 1, block 1',
+                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer1'][1].bn1.gate.view(-1),
                       epoch)
-        self.writer.add_histogram('gate values/layer 3, block 0',
-                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer3'][0].p1.view(-1),
+        self.writer.add_histogram('gate values/layer 2, block 1',
+                      self.model._modules['mapnet']._modules['feature_extractor']._modules['layer2'][3].bn1.gate.view(-1),
                       epoch)
-        self.writer.add_histogram('gate values/layer 4, block 0',
-                             self.model._modules['mapnet']._modules['feature_extractor']._modules['layer4'][0].p1.view(
-                               -1),epoch)
+        self.writer.add_histogram('gate values/layer 3, block 5',
+                                  self.model._modules['mapnet']._modules['feature_extractor']._modules['layer3'][
+                                    5].bn1.gate.view(-1),
+                                  epoch)
+        '''
       self.writer.close()
+
+
       # Save final checkpoint
       epoch = self.config['n_epochs']
       self.save_checkpoint(epoch)
@@ -541,7 +554,7 @@ class Trainer(object):
       if self.config['log_visdom']:
         self.vis.save(envs=[self.vis_env])
 
-def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,optim_2=None,
+def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
     train=True, max_grad_norm=0.0,trinet=False):
       """
       training/validation step for a feedforward NN
@@ -581,13 +594,11 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,opti
         if train:
           # SGD step
           optim.learner.zero_grad()
-          if optim_2 is not None:
-            optim_2.zero_grad()
           loss.final_loss.backward()
           if max_grad_norm > 0.0:
             torch.nn.utils.clip_grad_norm(model.parameters(), max_grad_norm)
           optim.learner.step()
-          optim_2.step()
+
 
 
         return loss, output
