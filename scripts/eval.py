@@ -9,6 +9,7 @@ from common.train import load_state_dict, step_feedfwd
 from common.pose_utils import optimize_poses, quaternion_angular_error, qexp,\
   calc_vos_safe_fc, calc_vos_safe
 from dataset_loaders.composite import MF
+from models.ModifiedResnet34 import resnet34 as ModifiedResNet34
 import argparse
 import os
 import os.path as osp
@@ -51,7 +52,8 @@ parser.add_argument('--pose_graph', action='store_true',
   help='Turn on Pose Graph Optimization')
 parser.add_argument('--brightness', type=float, default=1.,help='brightness')
 parser.add_argument('--hue', type=float, default=0., help='hue')
-
+parser.add_argument('--bin', action='store_true',
+  help='Use batch-instance normalization')
 args = parser.parse_args()
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
   os.environ['CUDA_VISIBLE_DEVICES'] = args.device
@@ -77,7 +79,10 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph:
     srq = section.getfloat('s_rel_rot', 20)
 
 # model
-feature_extractor = models.resnet34(pretrained=False)
+if args.bin:
+  feature_extractor = ModifiedResNet34(pretrained=False)
+else:
+  feature_extractor = models.resnet34(pretrained=False)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False)
 if (args.model.find('mapnet') >= 0) or args.pose_graph:
   model = MapNet(mapnet=posenet)

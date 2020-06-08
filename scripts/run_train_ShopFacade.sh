@@ -5,4 +5,7 @@ python train.py --dataset Cambridge \
 --model mapnet \
 --style_dir pbn_train_embedding_dist.txt \
 --device 0 \
---init_seed 0
+--init_seed 3 \
+--real_prob 50 \
+--alpha 0.5 \
+--suffix

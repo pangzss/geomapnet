@@ -41,6 +41,8 @@ parser.add_argument('--t_aug', action='store_true', help='use traditional augmen
 parser.add_argument('--config_file', type=str, help='configuration file')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++','trinet','stripnet','SLocNet','MIN'),
   help='Model to train')
+parser.add_argument('--bin', action='store_true',
+  help='Use batch-instance normalization')
 parser.add_argument('--device', type=str, default='0',
   help='value to be set to $CUDA_VISIBLE_DEVICES')
 parser.add_argument('--checkpoint', type=str, help='Checkpoint to resume from',
@@ -105,7 +107,22 @@ if seed >= 0:
 #if args.model != 'MIN':
 #feature_extractor = models.resnet34(pretrained=True)
 #else:
-feature_extractor = ModifiedResNet34(pretrained=True)
+if args.bin:
+  feature_extractor = ModifiedResNet34(pretrained=False)
+  resnet34 = models.resnet34(pretrained=True)
+
+  params1 = feature_extractor.state_dict()
+  params2 = resnet34.state_dict()
+  dict_params1 = dict(params1)
+  dict_params2 = dict(params2)
+
+  for name1 in dict_params1:
+    if (name1 in dict_params2) and ('bn' not in name1) :
+      dict_params1[name1].data.copy_(dict_params2[name1].data)
+
+  feature_extractor.load_state_dict(dict_params1)
+else:
+  feature_extractor = models.resnet34(pretrained=True)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=True,
                   filter_nans=(args.model=='mapnet++'))
 
@@ -165,16 +182,23 @@ else:
   raise NotImplementedError
 
 # optimizer
-param_list = [{'params': model.parameters()}]
-
+if not args.bin:
+  param_list = [{'params': model.parameters()}]
+else:
+  param_list = [{'params': [p for p in model.parameters() if (not getattr(p, 'bin_gate', False)) and (not getattr(p, 'bin_gate_var', False)) ]},
+              {'params': [p for p in model.parameters() if getattr(p, 'bin_gate', False) or getattr(p, 'bin_gate_var', False) ],
+               'lr': 0.05, 'weight_decay': 0}]
+'''
 param_list_2 = []
 num_blocks = [3,4,6,3]
+param_list_2.append({'params': [model._modules['mapnet']._modules['feature_extractor']._modules['bn1'].gate]})
 for layer in range(1,5):
     for block in range(num_blocks[layer-1]):
       module = model._modules['mapnet']._modules['feature_extractor']._modules['layer'+str(layer)][block]
-      param_list_2.append({'params': [module.p1,module.p2]})
-optimizer_2 = optim.SGD(param_list_2, lr=0.05)
-
+      if module.BIN:
+        param_list_2.append({'params': [module.bn1.gate,module.bn2.gate]})
+optimizer_2 = optim.SGD(param_list_2, lr=0.1)
+'''
 if args.learn_beta and hasattr(train_criterion, 'sax') and \
     hasattr(train_criterion, 'saq'):
   param_list.append({'params': [train_criterion.sax, train_criterion.saq]})
@@ -322,7 +346,7 @@ experiment_name += args.suffix
 if args.model != 'SLocNet':
 
   trainer = Trainer(model, optimizer, train_criterion, args.config_file,
-                    experiment_name, train_set, val_set, optimizer_2=optimizer_2, dataset_name=args.dataset,seed=seed, alpha=args.alpha,device=args.device,
+                    experiment_name, train_set, val_set, dataset_name=args.dataset,seed=seed, alpha=args.alpha,device=args.device,
                     checkpoint_file=args.checkpoint,
                     resume_optim=args.resume_optim, val_criterion=val_criterion,visdom_server = args.server, visdom_port = args.port)
   lstm = args.model == 'vidloc'
